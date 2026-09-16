@@ -6,14 +6,19 @@ param(
 $ErrorActionPreference = "Stop"
 $projectRoot = Split-Path -Parent $PSScriptRoot
 
-$scriptDir = Join-Path $env:APPDATA "Blackmagic Design\DaVinci Resolve\Support\Fusion\Scripts\Utility"
+# Resolve versions/configurations in the wild may enumerate either per-user
+# Fusion script root. Install the same sandbox-safe launcher to both locations.
+$scriptDirs = @(
+    (Join-Path $env:APPDATA "Blackmagic Design\DaVinci Resolve\Support\Fusion\Scripts\Utility"),
+    (Join-Path $env:APPDATA "Blackmagic Design\DaVinci Resolve\Fusion\Scripts\Utility")
+)
 $bridgeDir = Join-Path $env:APPDATA "Blackmagic Design\DaVinci Resolve\Support\OpenRoto"
 
-# Older development installs copied OpenRoto into several Resolve search roots.
-# That creates duplicate Workspace menu entries and can leave an old launcher
-# active after a newer copy is installed. Remove all non-canonical copies first.
-$legacyScriptDirs = @(
-    (Join-Path $env:APPDATA "Blackmagic Design\DaVinci Resolve\Fusion\Scripts\Utility"),
+# Clean stale Python launchers from all script roots; Python source belongs only
+# in Support\OpenRoto. Keep OpenRoto.lua in both discovery locations.
+$allScriptDirs = @(
+    $scriptDirs[0],
+    $scriptDirs[1],
     "C:\ProgramData\Blackmagic Design\DaVinci Resolve\Fusion\Scripts\Utility"
 )
 $legacyBridgeDirs = @(
@@ -21,15 +26,23 @@ $legacyBridgeDirs = @(
     "C:\ProgramData\Blackmagic Design\DaVinci Resolve\Support\OpenRoto"
 )
 
-foreach ($dir in $legacyScriptDirs) {
-    foreach ($name in @("OpenRoto.lua", "OpenRoto.py", "OpenRoto.py3")) {
+foreach ($dir in $allScriptDirs) {
+    foreach ($name in @("OpenRoto.py", "OpenRoto.py3")) {
         $path = Join-Path $dir $name
         try {
             if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Force }
         } catch {
-            Write-Warning "Could not remove legacy Resolve script $path : $($_.Exception.Message)"
+            Write-Warning "Could not remove stale Resolve script $path : $($_.Exception.Message)"
         }
     }
+}
+
+# Remove an old all-users Lua copy so it cannot shadow the per-user launchers.
+$allUsersLua = "C:\ProgramData\Blackmagic Design\DaVinci Resolve\Fusion\Scripts\Utility\OpenRoto.lua"
+try {
+    if (Test-Path -LiteralPath $allUsersLua) { Remove-Item -LiteralPath $allUsersLua -Force }
+} catch {
+    Write-Warning "Could not remove legacy Resolve script $allUsersLua : $($_.Exception.Message)"
 }
 
 foreach ($dir in $legacyBridgeDirs) {
@@ -43,12 +56,11 @@ foreach ($dir in $legacyBridgeDirs) {
     }
 }
 
-New-Item -ItemType Directory -Force -Path $scriptDir | Out-Null
-foreach ($staleName in @("OpenRoto.py", "OpenRoto.py3")) {
-    $stale = Join-Path $scriptDir $staleName
-    if (Test-Path -LiteralPath $stale) { Remove-Item -LiteralPath $stale -Force }
+foreach ($dir in $scriptDirs) {
+    New-Item -ItemType Directory -Force -Path $dir | Out-Null
+    Copy-Item -LiteralPath (Join-Path $projectRoot "resolve\OpenRoto.lua") -Destination (Join-Path $dir "OpenRoto.lua") -Force
+    Write-Host "Installed Resolve launcher at $dir"
 }
-Copy-Item -LiteralPath (Join-Path $projectRoot "resolve\OpenRoto.lua") -Destination (Join-Path $scriptDir "OpenRoto.lua") -Force
 
 New-Item -ItemType Directory -Force -Path $bridgeDir | Out-Null
 foreach ($staleName in @("OpenRoto.py", "OpenRoto.py3", "OpenRotoBridge.py")) {
@@ -82,6 +94,5 @@ $resolveLib = "C:\Program Files\Blackmagic Design\DaVinci Resolve\fusionscript.d
 [Environment]::SetEnvironmentVariable("RESOLVE_SCRIPT_API", $resolveApi, "User")
 [Environment]::SetEnvironmentVariable("RESOLVE_SCRIPT_LIB", $resolveLib, "User")
 
-Write-Host "Installed one canonical Resolve launcher at $scriptDir"
 Write-Host "Installed the Python bootstrap and bridge at $bridgeDir"
-Write-Host "Fully restart DaVinci Resolve so it sees the updated scripts and FUSION_Python3_Home."
+Write-Host "Fully restart DaVinci Resolve so Workspace > Scripts is rescanned."
