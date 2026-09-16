@@ -35,6 +35,7 @@ jobs:
         run: |
           .\.venv\Scripts\pyside6-qmllint.exe app\openroto\ui\Main.qml
           .\.venv\Scripts\pyside6-qmllint.exe app\openroto\ui\PolishedMain.qml
+          .\.venv\Scripts\pyside6-qmllint.exe app\openroto\ui\TimedMain.qml
       - name: Install Inno Setup
         shell: pwsh
         run: choco install innosetup --yes --no-progress
