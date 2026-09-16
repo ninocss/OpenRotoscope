@@ -109,6 +109,21 @@ local appDir = nil
 if appExecutable ~= nil and appExecutable ~= "" then
     appDir = string.match(appExecutable, "^(.*)\\[^\\]+$")
 end
+
+-- Production installs do not need OPENROTO_APP: the Resolve-specific Python
+-- home points at <install>\python-runtime, so its parent is the actual app dir.
+if appDir == nil or appDir == "" then
+    local configuredRuntime = os.getenv("FUSION_Python3_Home")
+    if configuredRuntime ~= nil and configuredRuntime ~= "" then
+        local trimmedRuntime = string.gsub(configuredRuntime, "[\\/]+$", "")
+        local configuredAppDir = string.match(trimmedRuntime, "^(.*)[\\/]python%-runtime$")
+        if configuredAppDir ~= nil and configuredAppDir ~= "" then
+            appDir = configuredAppDir
+            appExecutable = appDir .. "\\OpenRoto.exe"
+        end
+    end
+end
+
 if appDir == nil or appDir == "" then
     appDir = localData .. "\\Programs\\OpenRoto"
     appExecutable = appDir .. "\\OpenRoto.exe"
