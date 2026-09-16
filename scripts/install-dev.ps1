@@ -28,7 +28,8 @@ foreach ($dir in $scriptDirs) {
 
 foreach ($dir in $bridgeDirs) {
     New-Item -ItemType Directory -Force -Path $dir | Out-Null
-    Copy-Item -LiteralPath (Join-Path $projectRoot "resolve\OpenRoto.py") -Destination (Join-Path $dir "OpenRoto.py") -Force
+    $stalePy = Join-Path $dir "OpenRoto.py"
+    if (Test-Path -LiteralPath $stalePy) { Remove-Item -LiteralPath $stalePy -Force }
     Copy-Item -LiteralPath (Join-Path $projectRoot "resolve\OpenRoto.py") -Destination (Join-Path $dir "OpenRoto.py3") -Force
 }
 
@@ -44,7 +45,6 @@ if ($AppExecutable) {
 # Set DaVinci Resolve Scripting environment variables if not present
 $resolveApi = "C:\ProgramData\Blackmagic Design\DaVinci Resolve\Support\Developer\Scripting"
 $resolveLib = "C:\Program Files\Blackmagic Design\DaVinci Resolve\fusionscript.dll"
-$resolveModules = "$resolveApi\Modules"
 
 [Environment]::SetEnvironmentVariable("RESOLVE_SCRIPT_API", $resolveApi, "User")
 [Environment]::SetEnvironmentVariable("RESOLVE_SCRIPT_LIB", $resolveLib, "User")
