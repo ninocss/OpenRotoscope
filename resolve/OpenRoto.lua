@@ -10,7 +10,14 @@ if ffi_ok then
 end
 
 local function logMessage(message)
-    local localData = os.getenv("LOCALAPPDATA") or (os.getenv("USERPROFILE") .. "\\AppData\\Local")
+    local localData = os.getenv("LOCALAPPDATA")
+    if localData == nil or localData == "" then
+        local userProfile = os.getenv("USERPROFILE")
+        if userProfile == nil or userProfile == "" then
+            return
+        end
+        localData = userProfile .. "\\AppData\\Local"
+    end
     local dir = localData .. "\\OpenRoto"
     pcall(function()
         os.execute('mkdir "' .. dir .. '" 2>nul')
@@ -84,13 +91,13 @@ bridgeFile:close()
 
 logMessage("OpenRoto launcher: running Python 3 bridge " .. bridgePath)
 
-if fusionHost == nil or type(fusionHost.RunScript) ~= "function" then
+if fusionHost == nil then
     showDialog(
         "OpenRoto Error",
-        "DaVinci Resolve did not expose the Fusion RunScript API. Restart Resolve and try again.",
+        "DaVinci Resolve did not expose the Fusion scripting host. Restart Resolve and try again.",
         true
     )
-    error("OpenRoto could not access Fusion RunScript.")
+    error("OpenRoto could not access the Fusion scripting host.")
 end
 
 local runOk, runResult = pcall(function()
