@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [string]$Python = "3.12",
-    [string]$ResolvePythonVersion = "3.12.10",
+    [string]$ResolvePythonVersion = "3.10.11",
     [switch]$SkipCuda
 )
 
