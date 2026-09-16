@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import os
 import subprocess
-import sys
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -116,7 +115,7 @@ def backend_status(backend_id: str) -> dict[str, object]:
 
 def _runner_script(backend_id: str) -> Path:
     filename = "fgt_runner.py" if backend_id == "fgt" else "svor_runner.py"
-    return Path(__file__).resolve().parents[3] / "scripts" / "removal_backends" / filename
+    return Path(__file__).with_name("removal_runners") / filename
 
 
 def run_external_backend(
@@ -126,6 +125,7 @@ def run_external_backend(
     masks_dir: str | Path,
     output_dir: str | Path,
     frame_count: int,
+    fps: float,
     padding: int,
     feather: float,
     temporal_radius: int,
@@ -154,6 +154,7 @@ def run_external_backend(
         "masks_dir": str(Path(masks_dir).resolve()),
         "output_dir": str(destination.resolve()),
         "frame_count": int(frame_count),
+        "fps": float(fps),
         "padding": int(padding),
         "feather": float(feather),
         "temporal_radius": int(temporal_radius),
