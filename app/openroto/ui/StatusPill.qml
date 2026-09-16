@@ -7,6 +7,7 @@ Rectangle {
     property string label: ""
     property color dotColor: theme.accent
     property string toolTip: ""
+    property int maximumLabelWidth: 150
 
     implicitWidth: row.implicitWidth + 18
     implicitHeight: 28
@@ -28,10 +29,12 @@ Rectangle {
         }
         Text {
             anchors.verticalCenter: parent.verticalCenter
+            width: Math.min(implicitWidth, pill.maximumLabelWidth)
             text: pill.label
             color: pill.theme.textSecondary
             font.family: pill.theme.fontFamily
             font.pixelSize: 10
+            elide: Text.ElideRight
         }
     }
 
