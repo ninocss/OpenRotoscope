@@ -69,6 +69,29 @@ class ObjectRemovalTests(unittest.TestCase):
         self.assertIn('text: "Remove"', qml)
         self.assertIn("Track, Remove & Apply", qml)
         self.assertIn("currentRemovalUrl", qml)
+        self.assertIn('text: window.appController.status === "Waiting for Resolve"', qml)
+        self.assertIn("window.removalController.cancel()", qml)
+
+    def test_removal_forces_full_both_direction_tracking_before_rendering(self):
+        controller = (
+            ROOT / "app" / "openroto" / "ui" / "removal_controller.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn('if self._app.trackingDirection != "both":', controller)
+        self.assertIn('self._app.setTrackingDirection("both")', controller)
+        self.assertIn("if self._app.trackingDirty or self._missing_masks():", controller)
+        self.assertIn("Object tracking is incomplete at frame", controller)
+
+    def test_free_removal_validates_sequence_before_signalling_resolve(self):
+        controller = (
+            ROOT / "app" / "openroto" / "ui" / "removal_controller.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn("self._validate_output()", controller)
+        self.assertIn('0.98, "Waiting for Resolve", "Applying the removed-object result"', controller)
+        self.assertIn('app._send_control("apply")', controller)
+        self.assertLess(
+            controller.index("self._validate_output()", controller.index("def _apply_free")),
+            controller.index('app._send_control("apply")'),
+        )
 
 
 if __name__ == "__main__":
