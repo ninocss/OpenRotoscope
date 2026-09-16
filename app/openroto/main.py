@@ -11,6 +11,7 @@ from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from openroto.core.manifest import read_manifest
+from openroto.free_handoff import FreeHandoffController, FreeSessionAgent, ensure_free_agent
 from openroto.ui.controller import ApplicationController
 from openroto.ui.mica import apply_mica
 
@@ -18,6 +19,16 @@ from openroto.ui.mica import apply_mica
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="OpenRoto for DaVinci Resolve")
     parser.add_argument("--session", type=Path, help="Resolve session manifest")
+    parser.add_argument(
+        "--handoff",
+        action="store_true",
+        help="Use the filesystem handoff used by DaVinci Resolve Free 21.1+",
+    )
+    parser.add_argument(
+        "--free-agent",
+        action="store_true",
+        help="Watch for frame exports from DaVinci Resolve Free",
+    )
     return parser
 
 
@@ -34,12 +45,22 @@ def main(argv: list[str] | None = None) -> int:
     app.setWindowIcon(QIcon(str(icon_path)))
 
     arguments = build_parser().parse_args((argv or sys.argv)[1:])
+    if arguments.free_agent:
+        agent = FreeSessionAgent()
+        if not agent.is_primary:
+            return 0
+        return app.exec()
+
     if arguments.session is None:
+        ensure_free_agent()
         QMessageBox.information(
             None,
             "Open OpenRoto from DaVinci Resolve",
+            "OpenRoto is ready for DaVinci Resolve Free and Studio.\n\n"
             "Place the playhead over a video clip, then choose\n\n"
-            "Workspace  ›  Scripts  ›  OpenRoto",
+            "Workspace  ›  Scripts  ›  OpenRoto\n\n"
+            "On Resolve Free, OpenRoto opens automatically after the clip export. "
+            "When the matte is ready, choose Workspace › Scripts › OpenRoto Apply.",
         )
         return 2
     try:
@@ -49,7 +70,9 @@ def main(argv: list[str] | None = None) -> int:
         return 3
 
     engine = QQmlApplicationEngine()
-    controller = ApplicationController(manifest)
+    controller = (
+        FreeHandoffController(manifest) if arguments.handoff else ApplicationController(manifest)
+    )
     engine.setInitialProperties({"appController": controller})
     qml_path = Path(__file__).with_name("ui") / "Main.qml"
     engine.load(QUrl.fromLocalFile(str(qml_path)))

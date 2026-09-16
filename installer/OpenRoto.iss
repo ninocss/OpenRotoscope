@@ -28,26 +28,33 @@ ChangesEnvironment=yes
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
+[Dirs]
+; Resolve Free can render into this fixed directory without Lua filesystem APIs.
+; Keep user sessions on uninstall so unfinished mattes and safety snapshots survive.
+Name: "{localappdata}\OpenRoto\FreeExchange"; Flags: uninsneveruninstall
+Name: "{localappdata}\OpenRoto\Sessions"; Flags: uninsneveruninstall
+
 [Files]
 Source: "..\dist\OpenRoto\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
-; Resolve installations in the wild can enumerate either of these per-user
-; script roots. Ship the same sandbox-safe Lua launcher to both so Workspace >
-; Scripts continues to discover OpenRoto across Resolve versions/configurations.
+; Resolve installations in the wild can enumerate either per-user script root.
 Source: "..\resolve\OpenRoto.lua"; DestDir: "{userappdata}\Blackmagic Design\DaVinci Resolve\Support\Fusion\Scripts\Utility"; Flags: ignoreversion
 Source: "..\resolve\OpenRoto.lua"; DestDir: "{userappdata}\Blackmagic Design\DaVinci Resolve\Fusion\Scripts\Utility"; Flags: ignoreversion
+Source: "..\resolve\OpenRoto Apply.lua"; DestDir: "{userappdata}\Blackmagic Design\DaVinci Resolve\Support\Fusion\Scripts\Utility"; Flags: ignoreversion
+Source: "..\resolve\OpenRoto Apply.lua"; DestDir: "{userappdata}\Blackmagic Design\DaVinci Resolve\Fusion\Scripts\Utility"; Flags: ignoreversion
+; Studio keeps the Python bridge for the one-click automatic round trip.
 Source: "..\resolve\OpenRotoEntry.py"; DestDir: "{userappdata}\Blackmagic Design\DaVinci Resolve\Support\OpenRoto"; DestName: "OpenRoto.py3"; Flags: ignoreversion
 Source: "..\resolve\OpenRoto.py"; DestDir: "{userappdata}\Blackmagic Design\DaVinci Resolve\Support\OpenRoto"; DestName: "OpenRotoBridge.py"; Flags: ignoreversion
 Source: "..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\THIRD_PARTY_NOTICES.md"; DestDir: "{app}"; Flags: ignoreversion
 
 [Registry]
-; Resolve/Fusion does not ship an embedded Python interpreter on Windows. Point
-; its Python 3 host at OpenRoto's private CPython runtime. The previous value is
-; backed up/restored by the code section below.
+; Resolve Studio/Fusion uses OpenRoto's private CPython runtime for the in-app bridge.
 Root: HKCU; Subkey: "Environment"; ValueType: string; ValueName: "FUSION_Python3_Home"; ValueData: "{app}\python-runtime"; Flags: preservestringtype
+; Resolve Free cannot launch external processes from Lua, so keep one lightweight
+; OpenRoto agent running after user login. It shows no window until frames arrive.
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "OpenRoto Free Agent"; ValueData: """{app}\{#MyAppExeName}"" --free-agent"; Flags: uninsdeletevalue
 
 [InstallDelete]
-; Remove bridge/menu files left by older preview and development installs.
 Type: files; Name: "{userappdata}\Blackmagic Design\DaVinci Resolve\Support\Fusion\Scripts\Utility\OpenRoto.py"
 Type: files; Name: "{userappdata}\Blackmagic Design\DaVinci Resolve\Support\Fusion\Scripts\Utility\OpenRoto.py3"
 Type: files; Name: "{userappdata}\Blackmagic Design\DaVinci Resolve\Support\OpenRoto\OpenRoto.py"
@@ -63,16 +70,19 @@ Name: "{group}\OpenRoto"; Filename: "{app}\{#MyAppExeName}"
 Name: "{group}\Uninstall OpenRoto"; Filename: "{uninstallexe}"
 
 [Run]
+Filename: "{app}\{#MyAppExeName}"; Parameters: "--free-agent"; Flags: nowait runhidden skipifsilent
 Filename: "{app}\{#MyAppExeName}"; Description: "Show OpenRoto launch instructions"; Flags: nowait postinstall skipifsilent
 
 [UninstallDelete]
 Type: files; Name: "{userappdata}\Blackmagic Design\DaVinci Resolve\Support\Fusion\Scripts\Utility\OpenRoto.lua"
+Type: files; Name: "{userappdata}\Blackmagic Design\DaVinci Resolve\Support\Fusion\Scripts\Utility\OpenRoto Apply.lua"
 Type: files; Name: "{userappdata}\Blackmagic Design\DaVinci Resolve\Support\Fusion\Scripts\Utility\OpenRoto.py"
 Type: files; Name: "{userappdata}\Blackmagic Design\DaVinci Resolve\Support\Fusion\Scripts\Utility\OpenRoto.py3"
 Type: files; Name: "{userappdata}\Blackmagic Design\DaVinci Resolve\Support\OpenRoto\OpenRoto.py"
 Type: files; Name: "{userappdata}\Blackmagic Design\DaVinci Resolve\Support\OpenRoto\OpenRoto.py3"
 Type: files; Name: "{userappdata}\Blackmagic Design\DaVinci Resolve\Support\OpenRoto\OpenRotoBridge.py"
 Type: files; Name: "{userappdata}\Blackmagic Design\DaVinci Resolve\Fusion\Scripts\Utility\OpenRoto.lua"
+Type: files; Name: "{userappdata}\Blackmagic Design\DaVinci Resolve\Fusion\Scripts\Utility\OpenRoto Apply.lua"
 Type: files; Name: "{userappdata}\Blackmagic Design\DaVinci Resolve\Fusion\Scripts\Utility\OpenRoto.py"
 Type: files; Name: "{userappdata}\Blackmagic Design\DaVinci Resolve\Fusion\Scripts\Utility\OpenRoto.py3"
 Type: files; Name: "{userappdata}\Blackmagic Design\DaVinci Resolve\Fusion\OpenRoto\OpenRoto.py"
@@ -132,7 +142,7 @@ begin
   ResolveExe := ExpandConstant('{pf}\Blackmagic Design\DaVinci Resolve\Resolve.exe');
   Result := True;
   if not FileExists(ResolveExe) then
-    MsgBox('DaVinci Resolve 21.1 or newer was not found. OpenRoto can still be installed, but its Resolve script cannot be used until Resolve is installed.', mbInformation, MB_OK);
+    MsgBox('DaVinci Resolve 21.1 or newer was not found. OpenRoto can still be installed, but its Resolve scripts cannot be used until Resolve is installed.', mbInformation, MB_OK);
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
@@ -141,10 +151,11 @@ begin
     BackupFusionPythonHome();
 
   if CurStep = ssPostInstall then
-    MsgBox('OpenRoto is installed.' + #13#10 + #13#10 +
-      'IMPORTANT: Fully quit and restart DaVinci Resolve so it refreshes Workspace > Scripts and loads the bundled Python runtime.' + #13#10 + #13#10 +
-      'Then place the playhead over a clip and choose:' + #13#10 +
-      'Workspace > Scripts > OpenRoto', mbInformation, MB_OK);
+    MsgBox('OpenRoto is installed for DaVinci Resolve Free and Studio.' + #13#10 + #13#10 +
+      'Fully quit and restart DaVinci Resolve so Workspace > Scripts is refreshed.' + #13#10 + #13#10 +
+      'Start a session with Workspace > Scripts > OpenRoto.' + #13#10 +
+      'Resolve Studio applies the matte automatically.' + #13#10 +
+      'Resolve Free opens OpenRoto automatically after export; when the matte is ready choose Workspace > Scripts > OpenRoto Apply.', mbInformation, MB_OK);
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);

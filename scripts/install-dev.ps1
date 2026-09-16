@@ -6,16 +6,14 @@ param(
 $ErrorActionPreference = "Stop"
 $projectRoot = Split-Path -Parent $PSScriptRoot
 
-# Resolve versions/configurations in the wild may enumerate either per-user
-# Fusion script root. Install the same sandbox-safe launcher to both locations.
 $scriptDirs = @(
     (Join-Path $env:APPDATA "Blackmagic Design\DaVinci Resolve\Support\Fusion\Scripts\Utility"),
     (Join-Path $env:APPDATA "Blackmagic Design\DaVinci Resolve\Fusion\Scripts\Utility")
 )
 $bridgeDir = Join-Path $env:APPDATA "Blackmagic Design\DaVinci Resolve\Support\OpenRoto"
+$freeExchange = Join-Path $env:LOCALAPPDATA "OpenRoto\FreeExchange"
+$freeSessions = Join-Path $env:LOCALAPPDATA "OpenRoto\Sessions"
 
-# Clean stale Python launchers from all script roots; Python source belongs only
-# in Support\OpenRoto. Keep OpenRoto.lua in both discovery locations.
 $allScriptDirs = @(
     $scriptDirs[0],
     $scriptDirs[1],
@@ -37,7 +35,6 @@ foreach ($dir in $allScriptDirs) {
     }
 }
 
-# Remove an old all-users Lua copy so it cannot shadow the per-user launchers.
 $allUsersLua = "C:\ProgramData\Blackmagic Design\DaVinci Resolve\Fusion\Scripts\Utility\OpenRoto.lua"
 try {
     if (Test-Path -LiteralPath $allUsersLua) { Remove-Item -LiteralPath $allUsersLua -Force }
@@ -59,7 +56,8 @@ foreach ($dir in $legacyBridgeDirs) {
 foreach ($dir in $scriptDirs) {
     New-Item -ItemType Directory -Force -Path $dir | Out-Null
     Copy-Item -LiteralPath (Join-Path $projectRoot "resolve\OpenRoto.lua") -Destination (Join-Path $dir "OpenRoto.lua") -Force
-    Write-Host "Installed Resolve launcher at $dir"
+    Copy-Item -LiteralPath (Join-Path $projectRoot "resolve\OpenRoto Apply.lua") -Destination (Join-Path $dir "OpenRoto Apply.lua") -Force
+    Write-Host "Installed Resolve launch/apply scripts at $dir"
 }
 
 New-Item -ItemType Directory -Force -Path $bridgeDir | Out-Null
@@ -70,10 +68,10 @@ foreach ($staleName in @("OpenRoto.py", "OpenRoto.py3", "OpenRotoBridge.py")) {
 Copy-Item -LiteralPath (Join-Path $projectRoot "resolve\OpenRotoEntry.py") -Destination (Join-Path $bridgeDir "OpenRoto.py3") -Force
 Copy-Item -LiteralPath (Join-Path $projectRoot "resolve\OpenRoto.py") -Destination (Join-Path $bridgeDir "OpenRotoBridge.py") -Force
 
+New-Item -ItemType Directory -Force -Path $freeExchange | Out-Null
+New-Item -ItemType Directory -Force -Path $freeSessions | Out-Null
+
 if ($AppExecutable) {
-    # Resolve-Path returns a PathInfo object. Persisting the object itself can
-    # result in a relative/empty user environment variable, so explicitly use
-    # its absolute string path.
     $appPath = (Resolve-Path -LiteralPath $AppExecutable).Path
     [Environment]::SetEnvironmentVariable("OPENROTO_APP", $appPath, "User")
     Write-Host "OPENROTO_APP now points to $appPath"
@@ -84,15 +82,26 @@ if ($AppExecutable) {
     }
     [Environment]::SetEnvironmentVariable("FUSION_Python3_Home", $runtimePath, "User")
     Write-Host "FUSION_Python3_Home now points to $runtimePath"
+
+    $runKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
+    New-Item -Path $runKey -Force | Out-Null
+    $agentCommand = '"' + $appPath + '" --free-agent'
+    New-ItemProperty -Path $runKey -Name "OpenRoto Free Agent" -Value $agentCommand -PropertyType String -Force | Out-Null
+    Write-Host "Registered the OpenRoto Free agent for user login."
+
+    try {
+        Start-Process -FilePath $appPath -ArgumentList "--free-agent" -WindowStyle Hidden
+        Write-Host "Started the OpenRoto Free agent."
+    } catch {
+        Write-Warning "Could not start the OpenRoto Free agent: $($_.Exception.Message)"
+    }
 }
 
-# These variables are useful for Studio/external scripting and harmless for the
-# in-app bridge. The menu bridge itself reuses Resolve's live object.
 $resolveApi = "C:\ProgramData\Blackmagic Design\DaVinci Resolve\Support\Developer\Scripting"
 $resolveLib = "C:\Program Files\Blackmagic Design\DaVinci Resolve\fusionscript.dll"
-
 [Environment]::SetEnvironmentVariable("RESOLVE_SCRIPT_API", $resolveApi, "User")
 [Environment]::SetEnvironmentVariable("RESOLVE_SCRIPT_LIB", $resolveLib, "User")
 
-Write-Host "Installed the Python bootstrap and bridge at $bridgeDir"
+Write-Host "Installed the Studio Python bridge at $bridgeDir"
+Write-Host "Resolve Free exchange directory: $freeExchange"
 Write-Host "Fully restart DaVinci Resolve so Workspace > Scripts is rescanned."
