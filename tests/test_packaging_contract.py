@@ -144,6 +144,16 @@ class ResolveLauncherPackagingTests(unittest.TestCase):
         self.assertIn("python3*.dll", prepare)
         self.assertIn("sys.version_info[:2] == (3, 10)", prepare)
 
+    def test_build_cleans_only_repo_dist_processes_before_pyinstaller(self):
+        build = (ROOT / "scripts" / "build.ps1").read_text(encoding="utf-8")
+        self.assertIn("function Stop-OpenRotoProcessesFromPath", build)
+        self.assertIn('Get-Process -Name "OpenRoto"', build)
+        self.assertIn("StartsWith($root", build)
+        self.assertIn("Stop-Process -Id $process.Id -Force", build)
+        self.assertIn("function Remove-DirectoryWithRetry", build)
+        self.assertIn("Stop-OpenRotoProcessesFromPath $distAppPath", build)
+        self.assertIn("Remove-DirectoryWithRetry $distAppPath", build)
+
     def test_packaged_app_uses_crash_logging_entrypoint(self):
         build = (ROOT / "scripts" / "build.ps1").read_text(encoding="utf-8")
         launcher = (ROOT / "app" / "openroto_launcher.py").read_text(encoding="utf-8")
