@@ -30,7 +30,11 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Files]
 Source: "..\dist\OpenRoto\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+; Resolve installations in the wild can enumerate either of these per-user
+; script roots. Ship the same sandbox-safe Lua launcher to both so Workspace >
+; Scripts continues to discover OpenRoto across Resolve versions/configurations.
 Source: "..\resolve\OpenRoto.lua"; DestDir: "{userappdata}\Blackmagic Design\DaVinci Resolve\Support\Fusion\Scripts\Utility"; Flags: ignoreversion
+Source: "..\resolve\OpenRoto.lua"; DestDir: "{userappdata}\Blackmagic Design\DaVinci Resolve\Fusion\Scripts\Utility"; Flags: ignoreversion
 Source: "..\resolve\OpenRotoEntry.py"; DestDir: "{userappdata}\Blackmagic Design\DaVinci Resolve\Support\OpenRoto"; DestName: "OpenRoto.py3"; Flags: ignoreversion
 Source: "..\resolve\OpenRoto.py"; DestDir: "{userappdata}\Blackmagic Design\DaVinci Resolve\Support\OpenRoto"; DestName: "OpenRotoBridge.py"; Flags: ignoreversion
 Source: "..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
@@ -48,7 +52,6 @@ Type: files; Name: "{userappdata}\Blackmagic Design\DaVinci Resolve\Support\Fusi
 Type: files; Name: "{userappdata}\Blackmagic Design\DaVinci Resolve\Support\Fusion\Scripts\Utility\OpenRoto.py3"
 Type: files; Name: "{userappdata}\Blackmagic Design\DaVinci Resolve\Support\OpenRoto\OpenRoto.py"
 Type: files; Name: "{userappdata}\Blackmagic Design\DaVinci Resolve\Support\OpenRoto\OpenRotoBridge.py"
-Type: files; Name: "{userappdata}\Blackmagic Design\DaVinci Resolve\Fusion\Scripts\Utility\OpenRoto.lua"
 Type: files; Name: "{userappdata}\Blackmagic Design\DaVinci Resolve\Fusion\Scripts\Utility\OpenRoto.py"
 Type: files; Name: "{userappdata}\Blackmagic Design\DaVinci Resolve\Fusion\Scripts\Utility\OpenRoto.py3"
 Type: files; Name: "{userappdata}\Blackmagic Design\DaVinci Resolve\Fusion\OpenRoto\OpenRoto.py"
@@ -139,7 +142,7 @@ begin
 
   if CurStep = ssPostInstall then
     MsgBox('OpenRoto is installed.' + #13#10 + #13#10 +
-      'IMPORTANT: Fully quit and restart DaVinci Resolve so it loads the bundled Python runtime.' + #13#10 + #13#10 +
+      'IMPORTANT: Fully quit and restart DaVinci Resolve so it refreshes Workspace > Scripts and loads the bundled Python runtime.' + #13#10 + #13#10 +
       'Then place the playhead over a clip and choose:' + #13#10 +
       'Workspace > Scripts > OpenRoto', mbInformation, MB_OK);
 end;
