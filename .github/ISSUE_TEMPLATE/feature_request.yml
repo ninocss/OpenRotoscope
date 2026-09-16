@@ -1,0 +1,39 @@
+name: Feature request
+description: Suggest an improvement to OpenRoto
+title: "[Feature] "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or workflow
+      description: What is difficult or missing today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+      description: Describe the behavior you would like to see.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Rotoscoping / SAM2
+        - Object removal
+        - Resolve Free integration
+        - Resolve Studio integration
+        - UI / UX
+        - Performance
+        - Installer / packaging
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives or additional context
