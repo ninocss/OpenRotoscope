@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import builtins
 import os
 import sys
 import time
@@ -26,14 +25,63 @@ def _write(message: str) -> None:
         pass
 
 
+def _entry_path() -> Path:
+    current = globals().get("__file__")
+    if current:
+        return Path(str(current)).resolve()
+    appdata = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
+    return (
+        appdata
+        / "Blackmagic Design"
+        / "DaVinci Resolve"
+        / "Support"
+        / "OpenRoto"
+        / "OpenRoto.py3"
+    )
+
+
+def _prepare_environment() -> None:
+    # The installer's Resolve-specific Python home also tells us where the app
+    # lives, including when the user chose a non-default installation folder.
+    runtime_home = os.environ.get("FUSION_Python3_Home")
+    if runtime_home:
+        candidate = Path(runtime_home).resolve().parent / "OpenRoto.exe"
+        if candidate.is_file():
+            os.environ.setdefault("OPENROTO_APP", str(candidate))
+
+    program_data = Path(os.environ.get("PROGRAMDATA", r"C:\ProgramData"))
+    resolve_api = (
+        program_data
+        / "Blackmagic Design"
+        / "DaVinci Resolve"
+        / "Support"
+        / "Developer"
+        / "Scripting"
+    )
+    modules = resolve_api / "Modules"
+    resolve_lib = Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / (
+        "Blackmagic Design/DaVinci Resolve/fusionscript.dll"
+    )
+    os.environ.setdefault("RESOLVE_SCRIPT_API", str(resolve_api))
+    os.environ.setdefault("RESOLVE_SCRIPT_LIB", str(resolve_lib))
+    if modules.is_dir() and str(modules) not in sys.path:
+        sys.path.append(str(modules))
+
+
 def _run() -> None:
+    _prepare_environment()
+    entry_path = _entry_path()
     _write("=== Resolve Python bootstrap entered ===")
+    _write(f"entry_path={str(entry_path)!r}")
     _write(f"python={sys.version!r}")
     _write(f"executable={sys.executable!r}")
     _write(f"prefix={sys.prefix!r}; base_prefix={getattr(sys, 'base_prefix', None)!r}")
     _write(f"cwd={os.getcwd()!r}")
     _write(f"FUSION_Python3_Home={os.environ.get('FUSION_Python3_Home')!r}")
     _write(f"PYTHONHOME={os.environ.get('PYTHONHOME')!r}")
+    _write(f"OPENROTO_APP={os.environ.get('OPENROTO_APP')!r}")
+    _write(f"RESOLVE_SCRIPT_API={os.environ.get('RESOLVE_SCRIPT_API')!r}")
+    _write(f"RESOLVE_SCRIPT_LIB={os.environ.get('RESOLVE_SCRIPT_LIB')!r}")
     _write(
         "resolve globals: "
         f"resolve={globals().get('resolve') is not None}, "
@@ -43,7 +91,7 @@ def _run() -> None:
     )
     _write("sys.path=" + repr(sys.path))
 
-    bridge_path = Path(__file__).with_name("OpenRotoBridge.py")
+    bridge_path = entry_path.with_name("OpenRotoBridge.py")
     _write(f"bridge_path={str(bridge_path)!r}; exists={bridge_path.is_file()}")
     if not bridge_path.is_file():
         raise FileNotFoundError(f"OpenRoto bridge source is missing: {bridge_path}")
