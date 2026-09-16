@@ -43,7 +43,7 @@ try {
 }
 
 foreach ($dir in $legacyBridgeDirs) {
-    foreach ($name in @("OpenRoto.py", "OpenRoto.py3", "OpenRotoBridge.py")) {
+    foreach ($name in @("OpenRoto.py", "OpenRoto.py3", "OpenRotoBridge.py", "OpenRotoBridgeBase.py")) {
         $path = Join-Path $dir $name
         try {
             if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Force }
@@ -60,12 +60,13 @@ foreach ($dir in $scriptDirs) {
 }
 
 New-Item -ItemType Directory -Force -Path $bridgeDir | Out-Null
-foreach ($staleName in @("OpenRoto.py", "OpenRoto.py3", "OpenRotoBridge.py")) {
+foreach ($staleName in @("OpenRoto.py", "OpenRoto.py3", "OpenRotoBridge.py", "OpenRotoBridgeBase.py")) {
     $stale = Join-Path $bridgeDir $staleName
     if (Test-Path -LiteralPath $stale) { Remove-Item -LiteralPath $stale -Force }
 }
 Copy-Item -LiteralPath (Join-Path $projectRoot "resolve\OpenRotoEntry.py") -Destination (Join-Path $bridgeDir "OpenRoto.py3") -Force
-Copy-Item -LiteralPath (Join-Path $projectRoot "resolve\OpenRoto.py") -Destination (Join-Path $bridgeDir "OpenRotoBridge.py") -Force
+Copy-Item -LiteralPath (Join-Path $projectRoot "resolve\OpenRoto.py") -Destination (Join-Path $bridgeDir "OpenRotoBridgeBase.py") -Force
+Copy-Item -LiteralPath (Join-Path $projectRoot "resolve\OpenRotoRemovalBridge.py") -Destination (Join-Path $bridgeDir "OpenRotoBridge.py") -Force
 
 New-Item -ItemType Directory -Force -Path $freeExchange | Out-Null
 New-Item -ItemType Directory -Force -Path $freeSessions | Out-Null
