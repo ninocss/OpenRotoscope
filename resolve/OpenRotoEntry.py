@@ -9,6 +9,21 @@ import traceback
 from pathlib import Path
 
 APP_NAME = "OpenRoto"
+STATUS_KEY = "OpenRoto.BootstrapStatus"
+
+
+def _fusion_host():
+    return globals().get("fusion") or globals().get("fu") or globals().get("app")
+
+
+def _set_status(value: str) -> None:
+    """Expose bootstrap state to the sandboxed Lua launcher without file I/O."""
+    try:
+        host = _fusion_host()
+        if host is not None:
+            host.SetData(STATUS_KEY, str(value))
+    except Exception:
+        pass
 
 
 def _root() -> Path:
@@ -89,6 +104,7 @@ def _bridge_trace(filename: str):
 
 
 def _run() -> None:
+    _set_status("entered")
     _prepare_environment()
     entry_path = _entry_path()
     _write("=== Resolve Python bootstrap entered ===")
@@ -128,8 +144,10 @@ def _run() -> None:
             code = compile(source, str(bridge_path), "exec")
             bridge_globals = globals()
             bridge_globals["__file__"] = str(bridge_path)
+            _set_status("bridge-running")
             exec(code, bridge_globals, bridge_globals)
             _write("bridge source returned")
+            _set_status("bridge-returned")
         finally:
             sys.settrace(previous_trace)
             sys.stdout = previous_stdout
@@ -139,6 +157,7 @@ def _run() -> None:
 try:
     _run()
 except BaseException as error:
+    _set_status(f"failed:{type(error).__name__}:{error}")
     detail = "".join(traceback.format_exception(type(error), error, error.__traceback__))
     _write("bootstrap failure:\n" + detail)
     try:
