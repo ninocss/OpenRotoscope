@@ -8,12 +8,53 @@ import traceback
 from pathlib import Path
 
 APP_NAME = "OpenRoto"
+_STREAM_HANDLE = None
 
 
 def _log_path() -> Path:
     root = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / APP_NAME
     root.mkdir(parents=True, exist_ok=True)
     return root / "app.log"
+
+
+def _console_log_path() -> Path:
+    return _log_path().with_name("console.log")
+
+
+def _ensure_standard_streams() -> None:
+    """Give console-oriented libraries a writable stream in --windowed builds.
+
+    PyInstaller's Windows ``--windowed`` bootloader intentionally sets
+    ``sys.stdout`` and ``sys.stderr`` to ``None``. Hugging Face/tqdm and a few
+    dependencies used while SAM2 models are loaded expect a file-like object
+    and call ``.write()`` unconditionally. Route missing streams to a small
+    persistent log instead of letting model loading crash with a NoneType error.
+    """
+
+    global _STREAM_HANDLE
+    if sys.stdout is not None and sys.stderr is not None:
+        return
+    try:
+        if _STREAM_HANDLE is None:
+            _STREAM_HANDLE = _console_log_path().open(
+                "a", encoding="utf-8", buffering=1, errors="backslashreplace"
+            )
+            _STREAM_HANDLE.write(
+                time.strftime("\n%Y-%m-%d %H:%M:%S ")
+                + "=== windowed stdio redirected ===\n"
+            )
+        if sys.stdout is None:
+            sys.stdout = _STREAM_HANDLE
+        if sys.stderr is None:
+            sys.stderr = _STREAM_HANDLE
+    except Exception:
+        # Last-resort writable streams. The model loader needs a file-like
+        # object even if the normal OpenRoto log directory is unavailable.
+        fallback = open(os.devnull, "w", encoding="utf-8")
+        if sys.stdout is None:
+            sys.stdout = fallback
+        if sys.stderr is None:
+            sys.stderr = fallback
 
 
 def _log(message: str) -> None:
@@ -34,6 +75,7 @@ def _show_error(text: str) -> None:
 
 
 def main() -> int:
+    _ensure_standard_streams()
     _log("=== packaged app launcher started ===")
     _log(f"argv={sys.argv!r}")
     _log(f"executable={sys.executable!r}")
