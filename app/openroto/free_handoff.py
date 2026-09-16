@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import ctypes
-import json
 import os
 import re
 import secrets
@@ -260,8 +259,11 @@ class FreeSessionAgent(QObject):
 
 
 class FreeHandoffController(ApplicationController):
+    APPLY_TIMEOUT_SECONDS = 120.0
+
     def __init__(self, manifest: SessionManifest) -> None:
-        self._handoff_ready = False
+        self._handoff_applied = False
+        self._apply_requested = False
         super().__init__(manifest)
         # Port 1 is intentionally unreachable for handoff manifests. The base
         # controller catches that connection error; the filesystem handoff then
@@ -273,10 +275,30 @@ class FreeHandoffController(ApplicationController):
         self.connectionChanged.emit()
         self.statusChanged.emit()
 
+    @property
+    def _control_path(self) -> Path:
+        return Path(self.manifest.matte_dir) / "CONTROL.lua"
+
+    @property
+    def _applied_ack_path(self) -> Path:
+        return Path(self.manifest.matte_dir) / "APPLIED.drt"
+
+    @property
+    def _failed_ack_path(self) -> Path:
+        return Path(self.manifest.matte_dir) / "APPLY_FAILED.drt"
+
+    def _send_control(self, action: str) -> None:
+        token = f"openroto-free-{action}:{self.manifest.session_id}"
+        path = self._control_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_suffix(".tmp")
+        temporary.write_text(f'return "{token}"\n', encoding="utf-8")
+        os.replace(temporary, path)
+
     def renderAndApply(self) -> None:  # noqa: N802 - Qt slot name is part of the QML API
         if self._busy or not self._points.all():
             return
-        self._run_async("Rendering matte", self._render_for_handoff)
+        self._run_async("Render & Apply", self._render_for_handoff)
 
     def _render_for_handoff(self) -> None:
         missing = [
@@ -313,25 +335,52 @@ class FreeHandoffController(ApplicationController):
             ),
             encoding="utf-8",
         )
-        ready = Path(self.manifest.matte_dir) / "READY_TO_APPLY"
-        ready.write_text(
-            json.dumps({"session_id": self.manifest.session_id}), encoding="utf-8"
+
+        for stale in (self._applied_ack_path, self._failed_ack_path):
+            stale.unlink(missing_ok=True)
+        self._send_control("apply")
+        self._apply_requested = True
+        self._worker_progress(0.98, "Applying in DaVinci Resolve")
+
+        deadline = time.monotonic() + self.APPLY_TIMEOUT_SECONDS
+        while time.monotonic() < deadline:
+            if self._cancel.is_set():
+                self._send_control("cancel")
+                raise InterruptedError("Applying was cancelled")
+            if self._failed_ack_path.is_file():
+                raise RuntimeError(
+                    "DaVinci Resolve could not apply the OpenRoto matte. "
+                    "The safety snapshot was kept in the session folder."
+                )
+            if self._applied_ack_path.is_file():
+                self._handoff_applied = True
+                self._worker_progress(1.0, "Applied in DaVinci Resolve")
+                return
+            time.sleep(0.20)
+
+        raise RuntimeError(
+            "DaVinci Resolve did not confirm the OpenRoto apply step within two minutes."
         )
-        self._handoff_ready = True
-        self._status = "Waiting for Resolve"
-        self._detail = "Workspace › Scripts › OpenRoto Apply"
 
     def _finish_operation(self, status: str, detail: str) -> None:
-        if status == "Ready" and self._handoff_ready:
+        if status == "Ready" and self._handoff_applied:
             self._busy = False
-            self._bridge_connected = False
+            self._completed = True
             self._progress = 1.0
-            self._status = "Matte ready for DaVinci Resolve"
-            self._detail = "In Resolve choose Workspace › Scripts › OpenRoto Apply."
+            self._status = "Applied in DaVinci Resolve"
+            self._detail = "OpenRoto will close automatically."
             self.busyChanged.emit()
-            self.connectionChanged.emit()
             self.progressChanged.emit()
             self.statusChanged.emit()
             self.maskChanged.emit()
+            QTimer.singleShot(250, self.closeRequested.emit)
             return
         super()._finish_operation(status, detail)
+
+    def closeSession(self) -> None:  # noqa: N802 - mirrors the base Qt-facing lifecycle
+        if not self._handoff_applied:
+            try:
+                self._send_control("cancel")
+            except Exception:
+                pass
+        super().closeSession()

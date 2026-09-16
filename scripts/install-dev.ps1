@@ -25,7 +25,7 @@ $legacyBridgeDirs = @(
 )
 
 foreach ($dir in $allScriptDirs) {
-    foreach ($name in @("OpenRoto.py", "OpenRoto.py3")) {
+    foreach ($name in @("OpenRoto.py", "OpenRoto.py3", "OpenRoto Apply.lua")) {
         $path = Join-Path $dir $name
         try {
             if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Force }
@@ -56,8 +56,7 @@ foreach ($dir in $legacyBridgeDirs) {
 foreach ($dir in $scriptDirs) {
     New-Item -ItemType Directory -Force -Path $dir | Out-Null
     Copy-Item -LiteralPath (Join-Path $projectRoot "resolve\OpenRoto.lua") -Destination (Join-Path $dir "OpenRoto.lua") -Force
-    Copy-Item -LiteralPath (Join-Path $projectRoot "resolve\OpenRoto Apply.lua") -Destination (Join-Path $dir "OpenRoto Apply.lua") -Force
-    Write-Host "Installed Resolve launch/apply scripts at $dir"
+    Write-Host "Installed Resolve launcher at $dir"
 }
 
 New-Item -ItemType Directory -Force -Path $bridgeDir | Out-Null
