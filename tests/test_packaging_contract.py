@@ -54,16 +54,23 @@ class ResolveLauncherPackagingTests(unittest.TestCase):
         self.assertIn('ValueData: "{app}\\python-runtime"', installer)
         self.assertIn("ChangesEnvironment=yes", installer)
 
-    def test_dev_install_deploys_same_bridge_pair(self):
+    def test_dev_install_uses_one_canonical_resolve_location(self):
         script = (ROOT / "scripts" / "install-dev.ps1").read_text(encoding="utf-8")
         self.assertIn(
-            '"resolve\\OpenRotoEntry.py") -Destination (Join-Path $dir "OpenRoto.py3")',
+            'DaVinci Resolve\\Support\\Fusion\\Scripts\\Utility',
             script,
         )
         self.assertIn(
-            '"resolve\\OpenRoto.py") -Destination (Join-Path $dir "OpenRotoBridge.py")',
+            '"resolve\\OpenRotoEntry.py") -Destination (Join-Path $bridgeDir "OpenRoto.py3")',
             script,
         )
+        self.assertIn(
+            '"resolve\\OpenRoto.py") -Destination (Join-Path $bridgeDir "OpenRotoBridge.py")',
+            script,
+        )
+        self.assertEqual(1, script.count('"resolve\\OpenRoto.lua"'))
+        self.assertIn("$legacyScriptDirs", script)
+        self.assertIn("Remove-Item -LiteralPath $path -Force", script)
         self.assertIn('SetEnvironmentVariable("FUSION_Python3_Home"', script)
 
     def test_build_downloads_a_private_resolve_python_runtime(self):
