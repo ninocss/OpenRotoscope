@@ -34,8 +34,10 @@ def run(executable: Path) -> int:
         root = Path(directory)
         frames = root / "frames"
         matte = root / "matte"
+        local_data = root / "local-app-data"
         frames.mkdir()
         matte.mkdir()
+        local_data.mkdir()
         Image.new("RGB", (640, 360), "#24314a").save(frames / "00000000.png")
 
         server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -76,6 +78,7 @@ def run(executable: Path) -> int:
         manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
 
         env = os.environ.copy()
+        env["LOCALAPPDATA"] = str(local_data)
         env["QT_QPA_PLATFORM"] = "offscreen"
         env["OPENROTO_SMOKE_EXIT_MS"] = "1500"
         try:
@@ -90,6 +93,15 @@ def run(executable: Path) -> int:
 
         if completed.returncode != 0:
             raise SystemExit(f"Packaged OpenRoto exited with code {completed.returncode}")
+
+        app_log = local_data / "OpenRoto" / "app.log"
+        if not app_log.is_file():
+            raise SystemExit("Packaged OpenRoto did not create app.log")
+        log_text = app_log.read_text(encoding="utf-8")
+        if "packaged app launcher started" not in log_text:
+            raise SystemExit("Packaged OpenRoto did not execute the diagnostic launcher")
+        if "application exited normally with code 0" not in log_text:
+            raise SystemExit("Packaged OpenRoto did not log a clean shutdown")
         return 0
 
 

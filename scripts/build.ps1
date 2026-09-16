@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
     [string]$Python = "3.12",
+    [string]$ResolvePythonVersion = "3.12.10",
     [switch]$SkipCuda
 )
 
@@ -40,6 +41,18 @@ uv pip install --python $pythonExe -e "$projectRoot[inference,dev]"
     --hidden-import torchvision `
     --distpath $distPath `
     --workpath (Join-Path $projectRoot "build\pyinstaller") `
-    (Join-Path $projectRoot "app\openroto\main.py")
+    (Join-Path $projectRoot "app\openroto_launcher.py")
+if ($LASTEXITCODE -ne 0) {
+    throw "PyInstaller failed with exit code $LASTEXITCODE"
+}
+
+$runtimeDestination = Join-Path $distPath "OpenRoto\python-runtime"
+& (Join-Path $PSScriptRoot "prepare-python-runtime.ps1") `
+    -Destination $runtimeDestination `
+    -Version $ResolvePythonVersion
+if ($LASTEXITCODE -ne 0) {
+    throw "Preparing the bundled Resolve Python runtime failed with exit code $LASTEXITCODE"
+}
 
 Write-Host "OpenRoto app created at $distPath\OpenRoto"
+Write-Host "Resolve Python runtime created at $runtimeDestination"

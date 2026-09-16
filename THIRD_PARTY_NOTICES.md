@@ -2,6 +2,11 @@
 
 OpenRoto is MIT licensed. Runtime dependencies keep their own licenses.
 
+- **CPython 3.12** — Copyright Python Software Foundation and contributors.
+  The Windows installer bundles the official unmodified CPython embeddable
+  distribution for the in-Resolve bridge. CPython is distributed under the
+  Python Software Foundation License Version 2 and its bundled third-party
+  notices.
 - **Segment Anything 2 (SAM 2 / SAM 2.1)** — Copyright Meta Platforms, Inc.
   Code and checkpoints are provided under Apache License 2.0. Model files are
   downloaded from Meta's official Hugging Face repositories and are not part

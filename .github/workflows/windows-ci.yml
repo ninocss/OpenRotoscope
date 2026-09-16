@@ -16,6 +16,9 @@ jobs:
         with:
           python-version: "3.12"
           enable-cache: true
+      - name: Validate bundled Resolve Python runtime
+        shell: pwsh
+        run: .\scripts\prepare-python-runtime.ps1 -Destination "$env:RUNNER_TEMP\OpenRoto-Python"
       - name: Create test environment
         shell: pwsh
         run: |
@@ -30,3 +33,12 @@ jobs:
       - name: Lint QML
         shell: pwsh
         run: .\.venv\Scripts\pyside6-qmllint.exe app\openroto\ui\Main.qml
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --yes --no-progress
+      - name: Compile installer definition
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path .\dist\OpenRoto | Out-Null
+          Set-Content -LiteralPath .\dist\OpenRoto\OpenRoto.exe -Value "CI placeholder"
+          iscc .\installer\OpenRoto.iss
