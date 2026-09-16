@@ -186,11 +186,17 @@ class Sam2Engine:
                     raise InterruptedError("Tracking was cancelled")
                 if not any(point.label.value == "positive" for point in points):
                     raise ValueError(f"Frame {frame + 1} has no positive point")
-                logits = self._add_video_prompt(frame, points)
-                save_raw_mask(
-                    self._tensor_mask(logits[0]),
-                    self.raw_masks_dir / f"mask_{frame:08d}.png",
-                )
+
+                if hasattr(self._predictor, "add_new_points_or_box"):
+                    logits = self._add_video_prompt(frame, points)
+                    save_raw_mask(
+                        self._tensor_mask(logits[0]),
+                        self.raw_masks_dir / f"mask_{frame:08d}.png",
+                    )
+                else:
+                    # Keep lightweight/custom predictor doubles usable. Real
+                    # SAM2 video predictors always take the fast branch above.
+                    self.segment_frame(frame, points, preset, reset_cancel=False)
                 completed.add(frame)
 
             seed = min(prompts)
@@ -378,7 +384,7 @@ class Sam2Engine:
             empty = Image.new("L", image.size, 0)
         for frame in range(start, end):
             destination = self.raw_masks_dir / f"mask_{frame:08d}.png"
-            empty.save(destination, optimize=True)
+            empty.save(destination, compress_level=1)
 
     def _frame_path(self, frame: int) -> Path:
         candidates = (
