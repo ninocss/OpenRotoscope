@@ -1,5 +1,4 @@
 import QtQuick
-import QtQuick.Effects
 
 Rectangle {
     id: panel
@@ -8,15 +7,11 @@ Rectangle {
     property bool strong: false
 
     radius: theme.radiusLg
-    color: strong ? theme.surfaceRaised : theme.surface
+    color: strong || elevated ? theme.surfaceRaised : theme.surface
     border.width: 1
-    border.color: theme.border
+    border.color: elevated ? theme.borderStrong : theme.border
 
-    layer.enabled: elevated
-    layer.effect: MultiEffect {
-        shadowEnabled: panel.elevated
-        shadowColor: panel.theme.shadow
-        shadowBlur: 0.75
-        shadowOpacity: panel.theme.dark ? 0.38 : 0.18
-    }
+    // Avoid layer/effect shadows here. On software/offscreen Qt renderers the
+    // layer can disappear together with its contents. Depth stays visible via
+    // the stronger surface and border; viewer operation blur remains separate.
 }
