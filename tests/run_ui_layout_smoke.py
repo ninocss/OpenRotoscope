@@ -36,7 +36,9 @@ os.environ.setdefault("QT_QUICK_CONTROLS_STYLE", "Basic")
 from PIL import Image
 from PySide6.QtCore import QTimer, QUrl
 from PySide6.QtQml import QQmlApplicationEngine
+from PySide6.QtQuick import QQuickWindow
 from PySide6.QtWidgets import QApplication
+from shiboken6 import getCppPointer, wrapInstance
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "app"))
@@ -120,6 +122,7 @@ def run() -> int:
             return 4
 
         window = engine.rootObjects()[0]
+        quick_window = wrapInstance(getCppPointer(window)[0], QQuickWindow)
         window.setProperty("themeMode", ARGS.theme)
         removal_controller.setWorkflowMode(ARGS.mode)
         window.setWidth(ARGS.width)
@@ -134,9 +137,9 @@ def run() -> int:
                 actual_height = int(window.height())
                 minimum_width = int(window.minimumWidth())
                 minimum_height = int(window.minimumHeight())
-                image = window.screen().grabWindow(int(window.winId()))
+                image = quick_window.grabWindow()
                 if image.isNull():
-                    raise RuntimeError("screen().grabWindow(winId()) returned a null image")
+                    raise RuntimeError("QQuickWindow.grabWindow() returned a null image")
                 ARGS.output.parent.mkdir(parents=True, exist_ok=True)
                 if not image.save(str(ARGS.output)):
                     raise RuntimeError(f"Could not save {ARGS.output}")
