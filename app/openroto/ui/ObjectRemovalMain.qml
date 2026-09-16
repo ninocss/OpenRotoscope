@@ -71,12 +71,14 @@ TimedMain {
         anchors.bottom: parent.bottom
         anchors.bottomMargin: 84
         visible: window.appController.workflowMode === "remove"
-            && window.appController.viewerMode === "removed"
-            && window.appController.removalReady
-        source: window.appController.currentRemovalUrl
+            && window.appController.viewerMode !== "mask"
+            && (window.appController.viewerMode === "original" || window.appController.removalReady)
+        source: window.appController.viewerMode === "removed"
+            ? window.appController.currentRemovalUrl
+            : window.appController.currentFrameUrl
         fillMode: Image.PreserveAspectFit
         asynchronous: true
-        cache: false
+        cache: window.appController.viewerMode === "original"
         smooth: true
         Rectangle {
             anchors.fill: parent
