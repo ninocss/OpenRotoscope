@@ -105,13 +105,15 @@ class ResolveLauncherPackagingTests(unittest.TestCase):
         self.assertIn('Source: "..\\resolve\\OpenRotoEntry.py"', installer)
         self.assertIn('DestName: "OpenRoto.py3"', installer)
         self.assertIn('Source: "..\\resolve\\OpenRoto.py"', installer)
+        self.assertIn('DestName: "OpenRotoBridgeBase.py"', installer)
+        self.assertIn('Source: "..\\resolve\\OpenRotoRemovalBridge.py"', installer)
         self.assertIn('DestName: "OpenRotoBridge.py"', installer)
         self.assertIn('ValueName: "FUSION_Python3_Home"', installer)
         self.assertIn('ValueData: "{app}\\python-runtime"', installer)
         self.assertIn('ValueName: "OpenRoto Free Agent"', installer)
         self.assertIn('Parameters: "--free-agent"', installer)
         self.assertIn('Name: "{localappdata}\\OpenRoto\\FreeExchange"', installer)
-        self.assertIn("Render & Apply", installer)
+        self.assertIn("Remove & Apply", installer)
         self.assertIn("ChangesEnvironment=yes", installer)
 
     def test_dev_install_uses_both_user_discovery_roots(self):
@@ -126,12 +128,26 @@ class ResolveLauncherPackagingTests(unittest.TestCase):
             script,
         )
         self.assertIn(
-            '"resolve\\OpenRoto.py") -Destination (Join-Path $bridgeDir "OpenRotoBridge.py")',
+            '"resolve\\OpenRoto.py") -Destination (Join-Path $bridgeDir "OpenRotoBridgeBase.py")',
+            script,
+        )
+        self.assertIn(
+            '"resolve\\OpenRotoRemovalBridge.py") -Destination (Join-Path $bridgeDir "OpenRotoBridge.py")',
             script,
         )
         self.assertIn('SetEnvironmentVariable("FUSION_Python3_Home"', script)
         self.assertIn('"OpenRoto Free Agent"', script)
         self.assertIn('Start-Process -FilePath $appPath -ArgumentList "--free-agent"', script)
+
+    def test_studio_wrapper_preserves_roto_and_adds_removal_mode(self):
+        wrapper = (ROOT / "resolve" / "OpenRotoRemovalBridge.py").read_text(encoding="utf-8")
+        self.assertIn('OpenRotoBridgeBase.py', wrapper)
+        self.assertIn('mode = str(message.get("mode", "rotoscope"))', wrapper)
+        self.assertIn('if mode == "remove"', wrapper)
+        self.assertIn('_base["_apply_matte"]', wrapper)
+        self.assertIn('_apply_removal(', wrapper)
+        self.assertIn('f"removed_{index:08d}.png"', wrapper)
+        self.assertIn('removed_00000000.png', wrapper)
 
     def test_build_downloads_a_private_resolve_python_runtime(self):
         build = (ROOT / "scripts" / "build.ps1").read_text(encoding="utf-8")
@@ -162,13 +178,19 @@ class ResolveLauncherPackagingTests(unittest.TestCase):
         build = (ROOT / "scripts" / "build.ps1").read_text(encoding="utf-8")
         launcher = (ROOT / "app" / "openroto_launcher.py").read_text(encoding="utf-8")
         main = (ROOT / "app" / "openroto" / "main.py").read_text(encoding="utf-8")
+        removal_ui = (ROOT / "app" / "openroto" / "ui" / "ObjectRemovalMain.qml").read_text(
+            encoding="utf-8"
+        )
         self.assertIn("app\\openroto_launcher.py", build)
         self.assertIn('return root / "app.log"', launcher)
         self.assertIn("unhandled startup exception", launcher)
         self.assertIn('"--free-agent"', main)
         self.assertIn('"--handoff"', main)
         self.assertIn("FreeHandoffController", main)
-        self.assertIn("Render & Apply", main)
+        self.assertIn("ApplicationController", main)
+        self.assertIn("RemovalController", main)
+        self.assertIn('"removalController": removal_controller', main)
+        self.assertIn("Remove & Apply", removal_ui)
 
     def test_windowed_build_provides_writable_stdio_for_model_loaders(self):
         build = (ROOT / "scripts" / "build.ps1").read_text(encoding="utf-8")

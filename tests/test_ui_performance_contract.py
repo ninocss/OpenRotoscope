@@ -9,7 +9,7 @@ sys.path.insert(0, str(ROOT / "app"))
 
 
 class UiResponsivenessContractTests(unittest.TestCase):
-    def test_polished_ui_and_timing_overlay_are_packaged_and_loaded(self):
+    def test_polished_ui_timing_overlay_and_removal_shell_are_packaged_and_loaded(self):
         main = (ROOT / "app" / "openroto" / "main.py").read_text(encoding="utf-8")
         build = (ROOT / "scripts" / "build.ps1").read_text(encoding="utf-8")
         polished = (ROOT / "app" / "openroto" / "ui" / "PolishedMain.qml").read_text(
@@ -18,15 +18,22 @@ class UiResponsivenessContractTests(unittest.TestCase):
         timed = (ROOT / "app" / "openroto" / "ui" / "TimedMain.qml").read_text(
             encoding="utf-8"
         )
+        removal = (ROOT / "app" / "openroto" / "ui" / "ObjectRemovalMain.qml").read_text(
+            encoding="utf-8"
+        )
 
-        self.assertIn('"TimedMain.qml"', main)
+        self.assertIn('"ObjectRemovalMain.qml"', main)
         self.assertIn("PolishedMain.qml", build)
         self.assertIn("TimedMain.qml", build)
+        self.assertIn("ObjectRemovalMain.qml", build)
         self.assertIn("component CenteredTip", polished)
         self.assertIn("component SubjectMarker", polished)
         self.assertNotIn('text: pointItem.modelData.positive ? "+"', polished)
         self.assertIn("window.appController.performanceTimings", timed)
         self.assertIn("last measurement · milliseconds", timed)
+        self.assertIn("TimedMain {", removal)
+        self.assertIn('text: "Rotoscope"', removal)
+        self.assertIn('text: "Remove"', removal)
 
     def test_session_masks_use_fast_lossless_png_writes(self):
         matte = (ROOT / "app" / "openroto" / "inference" / "matte.py").read_text(

@@ -19,6 +19,7 @@ from openroto.inference.model_cache import model_is_installed
 from openroto.ui.controller import ApplicationController
 from openroto.ui.mica import apply_mica
 from openroto.ui.model_manager import ModelManager
+from openroto.ui.removal_controller import RemovalController
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -64,8 +65,7 @@ def main(argv: list[str] | None = None) -> int:
             "OpenRoto is ready for DaVinci Resolve Free and Studio.\n\n"
             "Place the playhead over a video clip, then choose\n\n"
             "Workspace  ›  Scripts  ›  OpenRoto\n\n"
-            "Select and track the subject in OpenRoto, then press Render & Apply. "
-            "The matte is applied in Resolve automatically and OpenRoto closes when finished.",
+            "Use Rotoscope to isolate a subject or Remove to reconstruct the background.",
         )
         return 2
     try:
@@ -75,14 +75,20 @@ def main(argv: list[str] | None = None) -> int:
         return 3
 
     engine = QQmlApplicationEngine()
-    controller = (
-        FreeHandoffController(manifest) if arguments.handoff else ApplicationController(manifest)
-    )
+    controller = FreeHandoffController(manifest) if arguments.handoff else ApplicationController(manifest)
+    removal_controller = RemovalController(controller)
     model_manager = ModelManager(controller)
-    engine.setInitialProperties({"appController": controller, "modelManager": model_manager})
-    qml_path = Path(__file__).with_name("ui") / "TimedMain.qml"
+    engine.setInitialProperties(
+        {
+            "appController": controller,
+            "modelManager": model_manager,
+            "removalController": removal_controller,
+        }
+    )
+    qml_path = Path(__file__).with_name("ui") / "ObjectRemovalMain.qml"
     engine.load(QUrl.fromLocalFile(str(qml_path)))
     if not engine.rootObjects():
+        removal_controller.close()
         model_manager.close()
         controller.closeSession()
         return 4
@@ -98,9 +104,6 @@ def main(argv: list[str] | None = None) -> int:
             preset = ModelPreset(controller.modelPreset)
             if not model_is_installed(MODEL_CATALOG[preset]):
                 return
-            # ApplicationController owns this engine for the full session. This
-            # background warmup is opportunistic and Sam2Engine serializes it
-            # safely with a click that happens at the same time.
             controller._engine.prewarm_frame(controller.currentFrame, preset)
         except Exception:
             pass
@@ -116,6 +119,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     controller.themeChanged.connect(configure_window)
     controller.closeRequested.connect(window.close)
+    app.aboutToQuit.connect(removal_controller.close)
     app.aboutToQuit.connect(model_manager.close)
     app.aboutToQuit.connect(controller.closeSession)
     smoke_exit_ms = os.environ.get("OPENROTO_SMOKE_EXIT_MS")

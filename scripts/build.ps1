@@ -79,6 +79,7 @@ uv pip install --python $pythonExe -e "$projectRoot[inference,dev]"
     --add-data "$(Join-Path $projectRoot 'app\openroto\ui\Main.qml');openroto/ui" `
     --add-data "$(Join-Path $projectRoot 'app\openroto\ui\PolishedMain.qml');openroto/ui" `
     --add-data "$(Join-Path $projectRoot 'app\openroto\ui\TimedMain.qml');openroto/ui" `
+    --add-data "$(Join-Path $projectRoot 'app\openroto\ui\ObjectRemovalMain.qml');openroto/ui" `
     --add-data "$(Join-Path $projectRoot 'app\openroto\ui\openroto.svg');openroto/ui" `
     --add-data "$(Join-Path $projectRoot 'THIRD_PARTY_NOTICES.md');." `
     --collect-all sam2 `
