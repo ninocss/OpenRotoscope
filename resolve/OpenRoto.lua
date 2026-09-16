@@ -28,6 +28,39 @@ if fusionHost == nil then
     fusionHost = resolveGlobal("Fusion")
 end
 
+-- Workspace script output is not reliably mirrored into Resolve's Console.
+-- Persist a stage marker in Fusion application data instead. This requires no
+-- filesystem access and survives long enough to inspect from the Console after
+-- a menu click.
+local stageKey = "OpenRoto.LauncherStage"
+local errorKey = "OpenRoto.LauncherError"
+local countKey = "OpenRoto.LauncherCount"
+local launchCount = 0
+
+local function setData(key, value)
+    if fusionHost == nil then return false end
+    local ok = pcall(function() fusionHost:SetData(key, value) end)
+    return ok
+end
+
+if fusionHost ~= nil then
+    pcall(function()
+        launchCount = tonumber(fusionHost:GetData(countKey)) or 0
+        launchCount = launchCount + 1
+        fusionHost:SetData(countKey, launchCount)
+        fusionHost:SetData(errorKey, nil)
+        fusionHost:SetData(stageKey, "lua-entered #" .. tostring(launchCount))
+    end)
+end
+
+local function setStage(stage)
+    local value = tostring(stage)
+    if launchCount > 0 then
+        value = value .. " #" .. tostring(launchCount)
+    end
+    setData(stageKey, value)
+end
+
 local function safePrint(message)
     if type(print) == "function" then
         pcall(print, "[OpenRoto] " .. tostring(message))
@@ -76,9 +109,12 @@ local function showDialog(title, message)
 end
 
 local function fail(message)
-    safePrint("ERROR: " .. tostring(message))
-    showDialog("OpenRoto — Startfehler", tostring(message))
-    error("OpenRoto: " .. tostring(message))
+    local text = tostring(message)
+    setData(errorKey, text)
+    setStage("failed: " .. text)
+    safePrint("ERROR: " .. text)
+    showDialog("OpenRoto — Startfehler", text)
+    error("OpenRoto: " .. text)
 end
 
 local function getEnv(name)
@@ -108,13 +144,16 @@ safePrint("launcher invoked; product=" .. tostring(productName) .. ", version=" 
 safePrint("fusion host=" .. tostring(fusionHost))
 
 if fusionHost == nil then
-    fail("DaVinci Resolve did not expose the Fusion scripting host.")
+    error("OpenRoto: DaVinci Resolve did not expose the Fusion scripting host.")
 end
+
+setStage("fusion-host-ready")
 
 local appData = getEnv("APPDATA")
 if appData == nil then
     fail("APPDATA is unavailable in the Resolve scripting environment.")
 end
+setStage("appdata-ready")
 
 local runtimeHome = getEnv("FUSION_Python3_Home")
 safePrint("FUSION_Python3_Home=" .. tostring(runtimeHome))
@@ -124,16 +163,19 @@ if runtimeHome == nil then
         "Installiere den neuesten OpenRoto-Build und beende Resolve danach vollständig."
     )
 end
+setStage("python-home-ready")
 
 local markerKey = "OpenRoto.BootstrapStatus"
 pcall(function() fusionHost:SetData(markerKey, nil) end)
 
 local bridgePath = appData .. [[\Blackmagic Design\DaVinci Resolve\Support\OpenRoto\OpenRoto.py3]]
 safePrint("starting Python bridge: " .. bridgePath)
+setStage("python-runscript-requested")
 
 local runOk, runResult = pcall(function()
     return fusionHost:RunScript(bridgePath)
 end)
+setStage("python-runscript-returned ok=" .. tostring(runOk) .. " result=" .. tostring(runResult))
 safePrint("RunScript finished; ok=" .. tostring(runOk) .. ", result=" .. tostring(runResult))
 
 if not runOk then
@@ -146,6 +188,7 @@ end
 local markerOk, markerValue = pcall(function()
     return fusionHost:GetData(markerKey)
 end)
+setStage("bootstrap-status ok=" .. tostring(markerOk) .. " value=" .. tostring(markerValue))
 safePrint("Python bootstrap marker: ok=" .. tostring(markerOk) .. ", value=" .. tostring(markerValue))
 
 if not markerOk or markerValue == nil or markerValue == "" then
@@ -167,4 +210,5 @@ if string.sub(tostring(markerValue), 1, 7) == "failed:" then
     fail("Die Python-Bridge ist fehlgeschlagen: " .. tostring(markerValue))
 end
 
+setStage("launcher-finished status=" .. tostring(markerValue))
 safePrint("launcher finished with Python status=" .. tostring(markerValue))
