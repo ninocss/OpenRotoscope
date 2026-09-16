@@ -1,0 +1,32 @@
+name: Windows CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - "fix/**"
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - name: Create test environment
+        shell: pwsh
+        run: |
+          uv venv .venv --python 3.12
+          uv pip install --python .venv\Scripts\python.exe -e ".[dev]"
+      - name: Run unit tests
+        shell: pwsh
+        run: .\.venv\Scripts\python.exe -m unittest discover -s tests -v
+      - name: Run UI smoke test
+        shell: pwsh
+        run: .\.venv\Scripts\python.exe tests\run_ui_smoke.py
+      - name: Lint QML
+        shell: pwsh
+        run: .\.venv\Scripts\pyside6-qmllint.exe app\openroto\ui\Main.qml
