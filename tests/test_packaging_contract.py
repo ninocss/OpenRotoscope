@@ -17,8 +17,6 @@ class ResolveLauncherPackagingTests(unittest.TestCase):
         self.assertIn("UIDispatcher", launcher)
         self.assertIn("OpenRoto — Startfehler", launcher)
 
-        # Check executable lines only. Comments intentionally explain which
-        # Resolve-sandbox facilities must never be reintroduced into the code.
         executable = "\n".join(
             line for line in launcher.splitlines() if not line.lstrip().startswith("--")
         )
@@ -44,12 +42,40 @@ class ResolveLauncherPackagingTests(unittest.TestCase):
         self.assertIn('countKey = "OpenRoto.LauncherCount"', launcher)
         self.assertIn('"lua-entered #"', launcher)
         self.assertIn('setStage("fusion-host-ready")', launcher)
-        self.assertIn('setStage("appdata-ready")', launcher)
-        self.assertIn('setStage("python-home-ready")', launcher)
+        self.assertIn('setStage("free-rendering")', launcher)
+        self.assertIn('setStage("free-export-ready:"', launcher)
         self.assertIn('setStage("python-runscript-requested")', launcher)
         self.assertIn('setStage("python-runscript-returned ok="', launcher)
         self.assertIn('setStage("bootstrap-status ok="', launcher)
         self.assertIn('setStage("launcher-finished status="', launcher)
+
+    def test_free_launcher_uses_resolve_render_api_not_python(self):
+        launcher = (ROOT / "resolve" / "OpenRoto.lua").read_text(encoding="utf-8")
+        self.assertIn('if tostring(productName) == "DaVinci Resolve" then', launcher)
+        self.assertIn("GetCurrentVideoItem", launcher)
+        self.assertIn("DuplicateTimeline", launcher)
+        self.assertIn("SetTrackEnable", launcher)
+        self.assertIn("SetRenderSettings", launcher)
+        self.assertIn("AddRenderJob", launcher)
+        self.assertIn("StartRendering", launcher)
+        self.assertIn("OpenRotoFree_", launcher)
+        self.assertIn('setData("OpenRoto.Free.SessionId"', launcher)
+        free_branch, studio_branch = launcher.split("-- Studio path:", maxsplit=1)
+        self.assertNotIn("RunScript(bridgePath)", free_branch)
+        self.assertIn("RunScript(bridgePath)", studio_branch)
+
+    def test_free_apply_is_workspace_sandbox_safe(self):
+        script = (ROOT / "resolve" / "OpenRoto Apply.lua").read_text(encoding="utf-8")
+        self.assertIn("CreateCompoundClip", script)
+        self.assertIn("ImportFusionComp", script)
+        self.assertIn('getData("OpenRoto.Free.SessionId")', script)
+        self.assertIn('setData(stageKey, "completed:"', script)
+        executable = "\n".join(
+            line for line in script.splitlines() if not line.lstrip().startswith("--")
+        )
+        for token in ("io.", "os.execute", "require(", "RunScript("):
+            with self.subTest(token=token):
+                self.assertNotIn(token, executable)
 
     def test_python_bootstrap_reports_status_without_lua_file_markers(self):
         bootstrap = (ROOT / "resolve" / "OpenRotoEntry.py").read_text(encoding="utf-8")
@@ -62,7 +88,7 @@ class ResolveLauncherPackagingTests(unittest.TestCase):
         self.assertIn("sys.version_info >= (3, 12)", bootstrap)
         self.assertIn("requires Python 3.10/3.11", bootstrap)
 
-    def test_installer_deploys_launcher_to_both_user_discovery_roots(self):
+    def test_installer_deploys_free_and_studio_integration(self):
         installer = (ROOT / "installer" / "OpenRoto.iss").read_text(encoding="utf-8")
         self.assertIn(
             'DestDir: "{userappdata}\\Blackmagic Design\\DaVinci Resolve\\Support\\Fusion\\Scripts\\Utility"',
@@ -73,25 +99,24 @@ class ResolveLauncherPackagingTests(unittest.TestCase):
             installer,
         )
         self.assertEqual(2, installer.count('Source: "..\\resolve\\OpenRoto.lua"'))
+        self.assertEqual(2, installer.count('Source: "..\\resolve\\OpenRoto Apply.lua"'))
         self.assertIn('Source: "..\\resolve\\OpenRotoEntry.py"', installer)
         self.assertIn('DestName: "OpenRoto.py3"', installer)
         self.assertIn('Source: "..\\resolve\\OpenRoto.py"', installer)
         self.assertIn('DestName: "OpenRotoBridge.py"', installer)
         self.assertIn('ValueName: "FUSION_Python3_Home"', installer)
         self.assertIn('ValueData: "{app}\\python-runtime"', installer)
+        self.assertIn('ValueName: "OpenRoto Free Agent"', installer)
+        self.assertIn('Parameters: "--free-agent"', installer)
+        self.assertIn('Name: "{localappdata}\\OpenRoto\\FreeExchange"', installer)
         self.assertIn("ChangesEnvironment=yes", installer)
 
     def test_dev_install_uses_both_user_discovery_roots(self):
         script = (ROOT / "scripts" / "install-dev.ps1").read_text(encoding="utf-8")
-        self.assertIn(
-            'DaVinci Resolve\\Support\\Fusion\\Scripts\\Utility',
-            script,
-        )
-        self.assertIn(
-            'DaVinci Resolve\\Fusion\\Scripts\\Utility',
-            script,
-        )
+        self.assertIn('DaVinci Resolve\\Support\\Fusion\\Scripts\\Utility', script)
+        self.assertIn('DaVinci Resolve\\Fusion\\Scripts\\Utility', script)
         self.assertIn("foreach ($dir in $scriptDirs)", script)
+        self.assertIn('"resolve\\OpenRoto Apply.lua")', script)
         self.assertIn(
             '"resolve\\OpenRotoEntry.py") -Destination (Join-Path $bridgeDir "OpenRoto.py3")',
             script,
@@ -101,6 +126,8 @@ class ResolveLauncherPackagingTests(unittest.TestCase):
             script,
         )
         self.assertIn('SetEnvironmentVariable("FUSION_Python3_Home"', script)
+        self.assertIn('"OpenRoto Free Agent"', script)
+        self.assertIn('Start-Process -FilePath $appPath -ArgumentList "--free-agent"', script)
 
     def test_build_downloads_a_private_resolve_python_runtime(self):
         build = (ROOT / "scripts" / "build.ps1").read_text(encoding="utf-8")
@@ -120,9 +147,13 @@ class ResolveLauncherPackagingTests(unittest.TestCase):
     def test_packaged_app_uses_crash_logging_entrypoint(self):
         build = (ROOT / "scripts" / "build.ps1").read_text(encoding="utf-8")
         launcher = (ROOT / "app" / "openroto_launcher.py").read_text(encoding="utf-8")
+        main = (ROOT / "app" / "openroto" / "main.py").read_text(encoding="utf-8")
         self.assertIn("app\\openroto_launcher.py", build)
         self.assertIn('return root / "app.log"', launcher)
         self.assertIn("unhandled startup exception", launcher)
+        self.assertIn('"--free-agent"', main)
+        self.assertIn('"--handoff"', main)
+        self.assertIn("FreeHandoffController", main)
 
 
 if __name__ == "__main__":
