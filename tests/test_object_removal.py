@@ -64,13 +64,20 @@ class ObjectRemovalTests(unittest.TestCase):
         qml = (ROOT / "app" / "openroto" / "ui" / "ObjectRemovalMain.qml").read_text(
             encoding="utf-8"
         )
-        self.assertIn('"ObjectRemovalMain.qml"', main)
+        advanced_qml = (
+            ROOT / "app" / "openroto" / "ui" / "RemovalModelsMain.qml"
+        ).read_text(encoding="utf-8")
+        self.assertIn('"RemovalModelsMain.qml"', main)
         self.assertIn("ObjectRemovalMain.qml", build)
+        self.assertIn("RemovalModelsMain.qml", build)
+        self.assertIn("AdvancedRemovalController", main)
         self.assertIn('text: "Remove"', qml)
         self.assertIn("Track, Remove & Apply", qml)
         self.assertIn("currentRemovalUrl", qml)
         self.assertIn('text: window.appController.status === "Waiting for Resolve"', qml)
         self.assertIn("window.removalController.cancel()", qml)
+        self.assertIn("Object Removal Models", advanced_qml)
+        self.assertIn("Benchmark 17 frames", advanced_qml)
 
     def test_removal_forces_full_both_direction_tracking_before_rendering(self):
         controller = (
@@ -92,6 +99,15 @@ class ObjectRemovalTests(unittest.TestCase):
             controller.index("self._validate_output()", controller.index("def _apply_free")),
             controller.index('app._send_control("apply")'),
         )
+
+    def test_advanced_controller_keeps_base_free_apply_path(self):
+        advanced = (
+            ROOT / "app" / "openroto" / "ui" / "removal_backend_controller.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn("class AdvancedRemovalController(RemovalController)", advanced)
+        self.assertIn("def _prepare(self)", advanced)
+        self.assertNotIn("def _apply_free", advanced)
+        self.assertNotIn("def _apply_studio", advanced)
 
 
 if __name__ == "__main__":
