@@ -20,6 +20,18 @@ jobs:
       - name: Build application
         shell: pwsh
         run: ./scripts/build.ps1
+      - name: Run unit tests
+        shell: pwsh
+        run: .\.venv-build\Scripts\python.exe -m unittest discover -s tests -v
+      - name: Run source UI smoke test
+        shell: pwsh
+        run: .\.venv-build\Scripts\python.exe tests\run_ui_smoke.py
+      - name: Run packaged application smoke test
+        shell: pwsh
+        run: .\.venv-build\Scripts\python.exe tests\run_packaged_smoke.py .\dist\OpenRoto\OpenRoto.exe
+      - name: Lint QML
+        shell: pwsh
+        run: .\.venv-build\Scripts\pyside6-qmllint.exe app\openroto\ui\Main.qml
       - name: Install Inno Setup
         shell: pwsh
         run: choco install innosetup --yes --no-progress
@@ -44,4 +56,3 @@ jobs:
           files: |
             installer/output/*.exe
             installer/output/*.sha256
-
