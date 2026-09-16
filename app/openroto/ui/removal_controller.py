@@ -157,23 +157,70 @@ class RemovalController(QObject):
     def close(self) -> None:
         self._engine.cancel()
 
-    def _prepare(self) -> None:
-        if self._app.trackingDirty:
+    def _missing_masks(self) -> list[int]:
+        return [
+            index
+            for index in range(self._app.manifest.frame_count)
+            if not self._app._raw_path(index).is_file()
+        ]
+
+    def _ensure_full_tracking(self) -> None:
+        # Object removal always needs a mask for every frame because it writes a
+        # full-length replacement sequence. A Forward/Backward roto pass is valid
+        # for matte work, but incomplete for removal, so normalize to Both here.
+        if self._app.trackingDirection != "both":
+            self._app.setTrackingDirection("both")
+
+        if self._app.trackingDirty or self._missing_masks():
             self._app._track()
+
+        missing = self._missing_masks()
+        if missing:
+            raise RuntimeError(
+                f"Object tracking is incomplete at frame {missing[0] + 1}. "
+                "Track the object again before removing it."
+            )
+
+    def _validate_output(self) -> None:
+        matte_root = Path(self._app.manifest.matte_dir).resolve()
+        if self._output_dir.is_symlink() or self._output_dir.parent.resolve() != matte_root:
+            raise RuntimeError("Refusing to use an unsafe object-removal output folder")
+        if self._output_dir.name != "removed":
+            raise RuntimeError("Object-removal output folder has an invalid name")
+        missing = [
+            index
+            for index in range(self._app.manifest.frame_count)
+            if not (self._output_dir / f"removed_{index:08d}.png").is_file()
+        ]
+        if missing:
+            raise RuntimeError(
+                f"The object-removal sequence is incomplete at frame {missing[0] + 1}."
+            )
+
+    def _prepare(self) -> None:
+        self._ensure_full_tracking()
+        self._validate_output_parent()
         self._engine.remove(
             self._app.manifest.frame_count,
             self._output_dir,
             self._settings,
             self._app._worker_progress,
         )
+        self._validate_output()
         self._ready = True
         self._revision += 1
         self._viewer_mode = "removed"
         self.changed.emit()
 
+    def _validate_output_parent(self) -> None:
+        matte_root = Path(self._app.manifest.matte_dir).resolve()
+        if self._output_dir.is_symlink() or self._output_dir.parent.resolve() != matte_root:
+            raise RuntimeError("Refusing to replace an unsafe object-removal output folder")
+
     def _remove_and_apply(self) -> None:
-        if not self._ready or self._app.trackingDirty:
+        if not self._ready or self._app.trackingDirty or self._missing_masks():
             self._prepare()
+        self._validate_output()
         if isinstance(self._app, FreeHandoffController):
             self._apply_free()
         else:
@@ -195,6 +242,7 @@ class RemovalController(QObject):
     def _apply_free(self) -> None:
         app = self._app
         assert isinstance(app, FreeHandoffController)
+        self._validate_output()
         comp_path = Path(app.manifest.matte_dir) / "OpenRoto.comp"
         comp_path.write_text(
             fusion_removal_comp_text(
@@ -203,11 +251,18 @@ class RemovalController(QObject):
             ),
             encoding="utf-8",
         )
+        if not comp_path.is_file() or comp_path.stat().st_size == 0:
+            raise RuntimeError("Could not prepare the Resolve object-removal composition")
+
         for stale in (app._applied_ack_path, app._failed_ack_path):
             stale.unlink(missing_ok=True)
         app._send_control("apply")
         app._apply_requested = True
-        app._worker_progress(0.98, "Applying in DaVinci Resolve")
+        # requestClose() treats this state specially and will not interrupt Resolve
+        # while it is creating/importing the compound clip.
+        app._set_progress_from_worker(
+            0.98, "Waiting for Resolve", "Applying the removed-object result"
+        )
 
         deadline = time.monotonic() + app.APPLY_TIMEOUT_SECONDS
         while time.monotonic() < deadline:
