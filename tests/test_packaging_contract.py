@@ -44,6 +44,8 @@ class ResolveLauncherPackagingTests(unittest.TestCase):
         self.assertIn('setStage("fusion-host-ready")', launcher)
         self.assertIn('setStage("free-rendering")', launcher)
         self.assertIn('setStage("free-export-ready:"', launcher)
+        self.assertIn('setStage("free-waiting-apply:"', launcher)
+        self.assertIn('setStage("free-apply-completed:"', launcher)
         self.assertIn('setStage("python-runscript-requested")', launcher)
         self.assertIn('setStage("python-runscript-returned ok="', launcher)
         self.assertIn('setStage("bootstrap-status ok="', launcher)
@@ -64,18 +66,17 @@ class ResolveLauncherPackagingTests(unittest.TestCase):
         self.assertNotIn("RunScript(bridgePath)", free_branch)
         self.assertIn("RunScript(bridgePath)", studio_branch)
 
-    def test_free_apply_is_workspace_sandbox_safe(self):
-        script = (ROOT / "resolve" / "OpenRoto Apply.lua").read_text(encoding="utf-8")
-        self.assertIn("CreateCompoundClip", script)
-        self.assertIn("ImportFusionComp", script)
-        self.assertIn('getData("OpenRoto.Free.SessionId")', script)
-        self.assertIn('setData(stageKey, "completed:"', script)
-        executable = "\n".join(
-            line for line in script.splitlines() if not line.lstrip().startswith("--")
-        )
-        for token in ("io.", "os.execute", "require(", "RunScript("):
-            with self.subTest(token=token):
-                self.assertNotIn(token, executable)
+    def test_free_launcher_applies_without_secondary_workspace_script(self):
+        launcher = (ROOT / "resolve" / "OpenRoto.lua").read_text(encoding="utf-8")
+        self.assertIn("pcall(dofile", launcher)
+        self.assertIn("CONTROL.lua", launcher)
+        self.assertIn("CreateCompoundClip", launcher)
+        self.assertIn("ImportFusionComp", launcher)
+        self.assertIn("APPLIED.drt", launcher)
+        self.assertIn("APPLY_FAILED.drt", launcher)
+        self.assertIn("openroto-free-apply:", launcher)
+        self.assertIn("openroto-free-cancel:", launcher)
+        self.assertFalse((ROOT / "resolve" / "OpenRoto Apply.lua").exists())
 
     def test_python_bootstrap_reports_status_without_lua_file_markers(self):
         bootstrap = (ROOT / "resolve" / "OpenRotoEntry.py").read_text(encoding="utf-8")
@@ -99,7 +100,8 @@ class ResolveLauncherPackagingTests(unittest.TestCase):
             installer,
         )
         self.assertEqual(2, installer.count('Source: "..\\resolve\\OpenRoto.lua"'))
-        self.assertEqual(2, installer.count('Source: "..\\resolve\\OpenRoto Apply.lua"'))
+        self.assertEqual(0, installer.count('Source: "..\\resolve\\OpenRoto Apply.lua"'))
+        self.assertGreaterEqual(installer.count("OpenRoto Apply.lua"), 2)
         self.assertIn('Source: "..\\resolve\\OpenRotoEntry.py"', installer)
         self.assertIn('DestName: "OpenRoto.py3"', installer)
         self.assertIn('Source: "..\\resolve\\OpenRoto.py"', installer)
@@ -109,6 +111,7 @@ class ResolveLauncherPackagingTests(unittest.TestCase):
         self.assertIn('ValueName: "OpenRoto Free Agent"', installer)
         self.assertIn('Parameters: "--free-agent"', installer)
         self.assertIn('Name: "{localappdata}\\OpenRoto\\FreeExchange"', installer)
+        self.assertIn("Render & Apply", installer)
         self.assertIn("ChangesEnvironment=yes", installer)
 
     def test_dev_install_uses_both_user_discovery_roots(self):
@@ -116,7 +119,8 @@ class ResolveLauncherPackagingTests(unittest.TestCase):
         self.assertIn('DaVinci Resolve\\Support\\Fusion\\Scripts\\Utility', script)
         self.assertIn('DaVinci Resolve\\Fusion\\Scripts\\Utility', script)
         self.assertIn("foreach ($dir in $scriptDirs)", script)
-        self.assertIn('"resolve\\OpenRoto Apply.lua")', script)
+        self.assertIn('"OpenRoto Apply.lua"', script)
+        self.assertNotIn('"resolve\\OpenRoto Apply.lua") -Destination', script)
         self.assertIn(
             '"resolve\\OpenRotoEntry.py") -Destination (Join-Path $bridgeDir "OpenRoto.py3")',
             script,
@@ -164,6 +168,7 @@ class ResolveLauncherPackagingTests(unittest.TestCase):
         self.assertIn('"--free-agent"', main)
         self.assertIn('"--handoff"', main)
         self.assertIn("FreeHandoffController", main)
+        self.assertIn("Render & Apply", main)
 
     def test_windowed_build_provides_writable_stdio_for_model_loaders(self):
         build = (ROOT / "scripts" / "build.ps1").read_text(encoding="utf-8")
