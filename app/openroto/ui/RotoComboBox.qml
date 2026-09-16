@@ -1,3 +1,5 @@
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Controls
 
@@ -54,6 +56,7 @@ ComboBox {
             font: delegateItem.font
             verticalAlignment: Text.AlignVCenter
             leftPadding: 9
+            elide: Text.ElideRight
         }
         background: Rectangle {
             radius: control.theme.radiusSm
