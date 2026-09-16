@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import shutil
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
@@ -32,6 +33,16 @@ from openroto.inference.sam2_engine import Sam2Engine
 from openroto.ui.mica import reduced_motion_enabled, system_uses_dark_mode
 
 
+_TIMING_LABELS = (
+    ("model_load", "Model Load"),
+    ("image_embedding", "Image Embedding"),
+    ("predict", "Predict"),
+    ("preview", "Preview"),
+    ("init_state", "Init State"),
+    ("propagate", "Propagate"),
+)
+
+
 class ApplicationController(QObject):
     changed = Signal()
     pointsChanged = Signal()
@@ -43,8 +54,10 @@ class ApplicationController(QObject):
     trackingStateChanged = Signal()
     connectionChanged = Signal()
     themeChanged = Signal()
+    timingsChanged = Signal()
     bridgeMessage = Signal("QVariantMap")
     workerProgress = Signal(float, str, str)
+    workerTiming = Signal(str, float)
     operationFinished = Signal(str, str)
     closeRequested = Signal()
 
@@ -81,7 +94,9 @@ class ApplicationController(QObject):
         self._preview_dir = Path(manifest.matte_dir) / "preview"
         self._raw_dir.mkdir(parents=True, exist_ok=True)
         self._preview_dir.mkdir(parents=True, exist_ok=True)
+        self._timings: dict[str, float | None] = {key: None for key, _label in _TIMING_LABELS}
         self._engine = Sam2Engine(manifest.frames_dir, self._raw_dir)
+        self._engine.set_timing_callback(lambda key, ms: self.workerTiming.emit(key, ms))
         self._device: ComputeDevice = detect_compute_device()
         self._bridge = BridgeClient(
             manifest.bridge_host,
@@ -94,6 +109,7 @@ class ApplicationController(QObject):
         )
         self.bridgeMessage.connect(self._on_bridge_message)
         self.workerProgress.connect(self._set_progress_from_worker)
+        self.workerTiming.connect(self._set_timing_from_worker)
         self.operationFinished.connect(self._finish_operation)
         try:
             self._bridge.connect()
@@ -149,6 +165,22 @@ class ApplicationController(QObject):
             {"x": point.x, "y": point.y, "positive": point.label == PointLabel.POSITIVE}
             for point in self._points.for_frame(self._current_frame)
         ]
+
+    @Property("QVariantList", notify=timingsChanged)
+    def performanceTimings(self) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        for key, label in _TIMING_LABELS:
+            value = self._timings[key]
+            rows.append(
+                {
+                    "key": key,
+                    "label": label,
+                    "measured": value is not None,
+                    "ms": -1.0 if value is None else value,
+                    "value": "—" if value is None else f"{value:,.1f} ms",
+                }
+            )
+        return rows
 
     @Property(bool, notify=busyChanged)
     def busy(self) -> bool:
@@ -318,6 +350,7 @@ class ApplicationController(QObject):
             self._model_preset = preset
             self._settings.setValue("modelPreset", value)
             self._mark_tracking_dirty()
+            self._reset_timings()
             self.changed.emit()
 
     @Slot(str)
@@ -516,6 +549,18 @@ class ApplicationController(QObject):
         self.progressChanged.emit()
         self.statusChanged.emit()
 
+    @Slot(str, float)
+    def _set_timing_from_worker(self, key: str, elapsed_ms: float) -> None:
+        if key not in self._timings:
+            return
+        self._timings[key] = max(0.0, float(elapsed_ms))
+        self.timingsChanged.emit()
+
+    def _reset_timings(self) -> None:
+        for key in self._timings:
+            self._timings[key] = None
+        self.timingsChanged.emit()
+
     @Slot("QVariantMap")
     def _on_bridge_message(self, message: dict[str, Any]) -> None:
         message_type = message.get("type")
@@ -564,7 +609,13 @@ class ApplicationController(QObject):
         frame_index = self._current_frame if frame is None else frame
         raw = self._raw_path(frame_index)
         if raw.exists():
-            render_preview(raw, self._preview_path(frame_index), self._matte_settings)
+            started_ns = time.perf_counter_ns()
+            try:
+                render_preview(raw, self._preview_path(frame_index), self._matte_settings)
+            finally:
+                self.workerTiming.emit(
+                    "preview", (time.perf_counter_ns() - started_ns) / 1_000_000.0
+                )
             self._mask_revision += 1
             self.maskChanged.emit()
 
