@@ -6,6 +6,7 @@ import QtQuick.Layouts
 
 TimedMain {
     id: window
+    required property var removalController
 
     component ModeButton: Button {
         id: control
@@ -48,13 +49,13 @@ TimedMain {
             spacing: 4
             ModeButton {
                 text: "Rotoscope"
-                active: window.appController.workflowMode === "rotoscope"
-                onClicked: window.appController.setWorkflowMode("rotoscope")
+                active: window.removalController.workflowMode === "rotoscope"
+                onClicked: window.removalController.setWorkflowMode("rotoscope")
             }
             ModeButton {
                 text: "Remove"
-                active: window.appController.workflowMode === "remove"
-                onClicked: window.appController.setWorkflowMode("remove")
+                active: window.removalController.workflowMode === "remove"
+                onClicked: window.removalController.setWorkflowMode("remove")
             }
         }
     }
@@ -70,15 +71,15 @@ TimedMain {
         anchors.topMargin: 113
         anchors.bottom: parent.bottom
         anchors.bottomMargin: 84
-        visible: window.appController.workflowMode === "remove"
-            && window.appController.viewerMode !== "mask"
-            && (window.appController.viewerMode === "original" || window.appController.removalReady)
-        source: window.appController.viewerMode === "removed"
-            ? window.appController.currentRemovalUrl
+        visible: window.removalController.workflowMode === "remove"
+            && window.removalController.viewerMode !== "mask"
+            && (window.removalController.viewerMode === "original" || window.removalController.ready)
+        source: window.removalController.viewerMode === "removed"
+            ? window.removalController.currentRemovalUrl
             : window.appController.currentFrameUrl
         fillMode: Image.PreserveAspectFit
         asynchronous: true
-        cache: window.appController.viewerMode === "original"
+        cache: window.removalController.viewerMode === "original"
         smooth: true
         Rectangle {
             anchors.fill: parent
@@ -91,7 +92,7 @@ TimedMain {
     Rectangle {
         parent: window.contentItem
         z: 1100
-        visible: window.appController.workflowMode === "remove"
+        visible: window.removalController.workflowMode === "remove"
         anchors.top: parent.top
         anchors.topMargin: 70
         anchors.right: parent.right
@@ -122,8 +123,8 @@ TimedMain {
                     font.weight: Font.DemiBold
                 }
                 Text {
-                    text: window.appController.removalReady ? "Ready" : window.appController.trackingReady ? "Tracked" : window.appController.hasPrompts ? "Needs track" : "Select"
-                    color: window.appController.removalReady ? window.success : window.appController.hasPrompts ? window.accent : window.muted
+                    text: window.removalController.ready ? "Ready" : window.appController.trackingReady ? "Tracked" : window.appController.hasPrompts ? "Needs track" : "Select"
+                    color: window.removalController.ready ? window.success : window.appController.hasPrompts ? window.accent : window.muted
                     font.family: "Segoe UI Variable Text"
                     font.pixelSize: 10
                     font.weight: Font.DemiBold
@@ -223,16 +224,16 @@ TimedMain {
                         Layout.leftMargin: 14
                         Layout.rightMargin: 14
                         Text { text: "Mask padding"; color: window.text; font.family: "Segoe UI Variable Text"; font.pixelSize: 11; Layout.fillWidth: true }
-                        Text { text: window.appController.removalPadding + " px"; color: window.secondary; font.family: "Segoe UI Variable Text"; font.pixelSize: 10 }
+                        Text { text: window.removalController.padding + " px"; color: window.secondary; font.family: "Segoe UI Variable Text"; font.pixelSize: 10 }
                     }
                     Slider {
                         Layout.fillWidth: true
                         Layout.leftMargin: 14
                         Layout.rightMargin: 14
                         from: 0; to: 32; stepSize: 1
-                        value: window.appController.removalPadding
+                        value: window.removalController.padding
                         enabled: !window.blocked
-                        onMoved: window.appController.setRemovalPadding(Math.round(value))
+                        onMoved: window.removalController.setPadding(Math.round(value))
                     }
 
                     RowLayout {
@@ -240,16 +241,16 @@ TimedMain {
                         Layout.leftMargin: 14
                         Layout.rightMargin: 14
                         Text { text: "Edge feather"; color: window.text; font.family: "Segoe UI Variable Text"; font.pixelSize: 11; Layout.fillWidth: true }
-                        Text { text: window.appController.removalFeather.toFixed(1) + " px"; color: window.secondary; font.family: "Segoe UI Variable Text"; font.pixelSize: 10 }
+                        Text { text: window.removalController.feather.toFixed(1) + " px"; color: window.secondary; font.family: "Segoe UI Variable Text"; font.pixelSize: 10 }
                     }
                     Slider {
                         Layout.fillWidth: true
                         Layout.leftMargin: 14
                         Layout.rightMargin: 14
                         from: 0; to: 16; stepSize: 0.5
-                        value: window.appController.removalFeather
+                        value: window.removalController.feather
                         enabled: !window.blocked
-                        onMoved: window.appController.setRemovalFeather(value)
+                        onMoved: window.removalController.setFeather(value)
                     }
 
                     RowLayout {
@@ -257,16 +258,16 @@ TimedMain {
                         Layout.leftMargin: 14
                         Layout.rightMargin: 14
                         Text { text: "Temporal search"; color: window.text; font.family: "Segoe UI Variable Text"; font.pixelSize: 11; Layout.fillWidth: true }
-                        Text { text: "±" + window.appController.removalTemporalRadius + " f"; color: window.secondary; font.family: "Segoe UI Variable Text"; font.pixelSize: 10 }
+                        Text { text: "±" + window.removalController.temporalRadius + " f"; color: window.secondary; font.family: "Segoe UI Variable Text"; font.pixelSize: 10 }
                     }
                     Slider {
                         Layout.fillWidth: true
                         Layout.leftMargin: 14
                         Layout.rightMargin: 14
                         from: 2; to: 60; stepSize: 1
-                        value: window.appController.removalTemporalRadius
+                        value: window.removalController.temporalRadius
                         enabled: !window.blocked
-                        onMoved: window.appController.setRemovalTemporalRadius(Math.round(value))
+                        onMoved: window.removalController.setTemporalRadius(Math.round(value))
                     }
 
                     Button {
@@ -274,9 +275,9 @@ TimedMain {
                         Layout.leftMargin: 14
                         Layout.rightMargin: 14
                         implicitHeight: 34
-                        text: window.appController.removalReady ? "Rebuild preview" : "Preview removal"
+                        text: window.removalController.ready ? "Rebuild preview" : "Preview removal"
                         enabled: window.appController.hasPrompts && !window.blocked
-                        onClicked: window.appController.previewRemoval()
+                        onClicked: window.removalController.preview()
                     }
 
                     RowLayout {
@@ -296,9 +297,9 @@ TimedMain {
                                 implicitHeight: 30
                                 text: modelData.label
                                 checkable: true
-                                checked: window.appController.viewerMode === modelData.value
-                                enabled: modelData.value !== "removed" || window.appController.removalReady
-                                onClicked: window.appController.setViewerMode(modelData.value)
+                                checked: window.removalController.viewerMode === modelData.value
+                                enabled: modelData.value !== "removed" || window.removalController.ready
+                                onClicked: window.removalController.setViewerMode(modelData.value)
                             }
                         }
                     }
@@ -314,7 +315,7 @@ TimedMain {
                         font.letterSpacing: 0.8
                     }
                     Repeater {
-                        model: window.appController.removalTimings
+                        model: window.removalController.timings
                         delegate: RowLayout {
                             required property var modelData
                             Layout.fillWidth: true
@@ -351,7 +352,7 @@ TimedMain {
                     implicitHeight: 40
                     text: window.appController.trackingDirty ? "Track, Remove & Apply" : "Remove & Apply"
                     enabled: window.appController.hasPrompts && window.appController.bridgeConnected && !window.blocked
-                    onClicked: window.appController.renderAndApply()
+                    onClicked: window.removalController.removeAndApply()
                 }
             }
         }
