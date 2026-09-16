@@ -20,7 +20,10 @@ def save_raw_mask(mask: np.ndarray, destination: str | Path) -> Path:
     else:
         normalized = np.clip(normalized, 0, 1)
         normalized = (normalized * 255).astype(np.uint8)
-    Image.fromarray(normalized, mode="L").save(path, optimize=True)
+    # These masks are session working files. PNG optimization is lossless but
+    # surprisingly expensive when SAM2 writes dozens/hundreds of frames, so use
+    # a low compression level for much lower interactive/tracking latency.
+    Image.fromarray(normalized, mode="L").save(path, compress_level=1)
     return path
 
 
@@ -44,7 +47,9 @@ def process_mask(
             alpha = ImageOps.invert(alpha)
         white = Image.new("RGB", alpha.size, "white")
         white.putalpha(alpha)
-        white.save(destination_path, optimize=True)
+        # Final/preview files remain lossless; low PNG compression trades a
+        # little temporary disk space for substantially faster UI and export.
+        white.save(destination_path, compress_level=2)
     return destination_path
 
 
