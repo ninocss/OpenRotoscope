@@ -13,12 +13,13 @@ from PySide6.QtWidgets import QApplication, QMessageBox
 
 from openroto.core.manifest import read_manifest
 from openroto.core.models import ModelPreset
-from openroto.free_handoff import FreeSessionAgent, ensure_free_agent
+from openroto.free_handoff import FreeHandoffController, FreeSessionAgent, ensure_free_agent
 from openroto.inference.catalog import MODEL_CATALOG
 from openroto.inference.model_cache import model_is_installed
+from openroto.ui.controller import ApplicationController
 from openroto.ui.mica import apply_mica
 from openroto.ui.model_manager import ModelManager
-from openroto.ui.workflow_controller import FreeWorkflowController, WorkflowController
+from openroto.ui.removal_controller import RemovalController
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -74,12 +75,20 @@ def main(argv: list[str] | None = None) -> int:
         return 3
 
     engine = QQmlApplicationEngine()
-    controller = FreeWorkflowController(manifest) if arguments.handoff else WorkflowController(manifest)
+    controller = FreeHandoffController(manifest) if arguments.handoff else ApplicationController(manifest)
+    removal_controller = RemovalController(controller)
     model_manager = ModelManager(controller)
-    engine.setInitialProperties({"appController": controller, "modelManager": model_manager})
+    engine.setInitialProperties(
+        {
+            "appController": controller,
+            "modelManager": model_manager,
+            "removalController": removal_controller,
+        }
+    )
     qml_path = Path(__file__).with_name("ui") / "ObjectRemovalMain.qml"
     engine.load(QUrl.fromLocalFile(str(qml_path)))
     if not engine.rootObjects():
+        removal_controller.close()
         model_manager.close()
         controller.closeSession()
         return 4
@@ -110,6 +119,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     controller.themeChanged.connect(configure_window)
     controller.closeRequested.connect(window.close)
+    app.aboutToQuit.connect(removal_controller.close)
     app.aboutToQuit.connect(model_manager.close)
     app.aboutToQuit.connect(controller.closeSession)
     smoke_exit_ms = os.environ.get("OPENROTO_SMOKE_EXIT_MS")
