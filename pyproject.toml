@@ -5,17 +5,30 @@ build-backend = "hatchling.build"
 [project]
 name = "openroto"
 version = "0.1.0"
-description = "Local AI subject masking workflow for DaVinci Resolve"
+description = "Local AI rotoscoping and object removal for DaVinci Resolve"
 readme = "README.md"
 requires-python = ">=3.12,<3.14"
 license = { file = "LICENSE" }
 authors = [{ name = "OpenRoto contributors" }]
+keywords = ["davinci-resolve", "rotoscoping", "video", "sam2", "inpainting"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: Microsoft :: Windows",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Multimedia :: Video",
+]
 dependencies = [
   "PySide6>=6.8,<6.10",
   "numpy>=2.1,<3",
   "Pillow>=11,<13",
   "platformdirs>=4.3,<5",
 ]
+
+[project.urls]
+Homepage = "https://github.com/ninocss/OpenRotoscope"
+Repository = "https://github.com/ninocss/OpenRotoscope"
+Issues = "https://github.com/ninocss/OpenRotoscope/issues"
 
 [project.optional-dependencies]
 inference = [
