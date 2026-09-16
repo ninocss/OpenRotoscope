@@ -60,6 +60,7 @@ PolishedMain {
 
                     delegate: Item {
                         id: timingCell
+                        required property int index
                         required property var modelData
                         Layout.fillWidth: true
                         Layout.fillHeight: true
@@ -88,7 +89,7 @@ PolishedMain {
                         }
 
                         Rectangle {
-                            visible: index > 0
+                            visible: timingCell.index > 0
                             anchors.left: parent.left
                             anchors.verticalCenter: parent.verticalCenter
                             width: 1
