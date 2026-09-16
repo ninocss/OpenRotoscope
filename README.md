@@ -1,31 +1,45 @@
 # OpenRoto
 
-OpenRoto is a local, open-source subject masking workflow for DaVinci Resolve
-Free and Studio. It exports the clip under the playhead, opens a focused
-annotation window, tracks one subject with SAM 2.1, and applies the resulting
-alpha matte back to the clip through Fusion.
+OpenRoto is a local, open-source rotoscoping and object-removal workflow for DaVinci Resolve Free and Studio on Windows.
 
-> **Current status:** working developer preview. The application, Resolve
-> bridge, SAM2 backend, CUDA detection, Fusion graph, installer definition and
-> automated checks are implemented. The final Resolve/Fusion round trip still
-> needs to be validated against real timelines before a signed release is cut.
+It can:
 
-## Workflow
+- export the clip under the playhead from Resolve;
+- select and track a subject with SAM 2.1;
+- render an alpha matte and apply it back through Fusion;
+- remove a tracked object and reconstruct the covered background;
+- run locally without uploading footage, prompts, masks or project data.
 
-1. Put the playhead over the topmost video clip you want to isolate.
+> **Status:** developer preview. The Resolve Free round trip has been validated on real timelines. Studio support, installer/release packaging and the optional learned object-removal backends should still be treated as pre-1.0 software.
+
+## Rotoscope workflow
+
+1. Put the playhead over the video clip you want to process.
 2. Choose **Workspace > Scripts > OpenRoto**.
 3. Resolve exports the visible clip range and OpenRoto opens automatically.
-4. Left-click the subject. Right-click areas that must be excluded.
+4. In **Rotoscope**, left-click the subject and right-click areas that must be excluded.
 5. Scrub to difficult frames and add correction points where needed.
-6. Choose **Fast**, **Balanced**, or **High**, then track in both directions.
-7. Adjust overlay, expand/contract, feather or invert.
-8. Choose **Render & Apply**. OpenRoto creates a non-destructive compound and
-   adds the Fusion matte automatically.
+6. Choose **Fast**, **Balanced** or **High**, then track.
+7. Adjust expand/contract, feather or invert.
+8. Choose **Render & Apply**.
 
-The source clip remains inside the compound. Closing OpenRoto before applying
-does not modify the original timeline.
+OpenRoto creates a non-destructive compound/Fusion setup. The original source remains available inside the compound.
 
-## Quality presets
+## Object removal
+
+The **Remove** tab reuses the same SAM2 selection and tracking data, then reconstructs the masked region.
+
+Available backends:
+
+| Backend | Availability | Intended use |
+| --- | --- | --- |
+| Temporal Fill | Built in | Fast local fallback; best when the hidden background is visible in nearby frames |
+| FGT++ | Optional local sidecar | Classical learned video inpainting on consumer hardware |
+| SVOR | Optional local sidecar | High-quality diffusion-based removal for high-VRAM systems |
+
+FGT++ and SVOR are not bundled with OpenRoto. Their code, environments and model weights remain separate and keep their upstream licenses. See [docs/removal-backends.md](docs/removal-backends.md) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+## SAM2 quality presets
 
 | Preset | SAM2.1 checkpoint | Intended use |
 | --- | --- | --- |
@@ -33,25 +47,18 @@ does not modify the original timeline.
 | Balanced | Hiera Base Plus | Default for most footage |
 | High | Hiera Large | Difficult motion and fine boundaries |
 
-OpenRoto uses CUDA automatically when PyTorch detects a compatible NVIDIA GPU.
-The packaged Windows build pins the CUDA 13.0 runtime. CPU inference remains
-available but can be much slower. Model checkpoints download only when first
-selected and are then available offline.
+OpenRoto uses CUDA automatically when PyTorch detects a compatible NVIDIA GPU. CPU inference remains available but can be much slower. SAM2 checkpoints download only when first selected and are then available offline.
 
 ## Requirements
 
 - Windows 10 or Windows 11, 64-bit
 - DaVinci Resolve 21.1 or newer, Free or Studio
-- An NVIDIA GPU is strongly recommended; 6 GB VRAM for Balanced and 10 GB for
-  High are comfortable targets
-- Enough temporary disk space for a lossless PNG sequence of the visible clip
-- Internet access the first time each SAM2 preset is loaded
+- NVIDIA GPU strongly recommended
+- roughly 6 GB VRAM for Balanced and 10 GB for High are comfortable SAM2 targets
+- enough temporary disk space for the exported image sequence
+- internet access when a model is downloaded for the first time
 
-No system Python installation is needed by the release installer. Fusion's
-Python 3 host still needs a compatible CPython runtime on Windows, so OpenRoto
-ships a private official CPython 3.12 embeddable runtime and configures
-`FUSION_Python3_Home` to use it. The OpenRoto Qt application ships separately
-as a PyInstaller build.
+No system Python installation is required by the packaged application. OpenRoto ships a private official CPython **3.10.11** embeddable runtime for the Resolve Python bridge and packages the Qt application separately with PyInstaller.
 
 ## Development
 
@@ -70,7 +77,7 @@ uv pip install --python .venv\Scripts\python.exe `
   --index-url https://download.pytorch.org/whl/cu130
 ```
 
-Run the checks:
+Run the main checks:
 
 ```powershell
 .venv\Scripts\python.exe -m unittest discover -s tests -v
@@ -78,7 +85,7 @@ Run the checks:
 pyside6-qmllint app\openroto\ui\Main.qml
 ```
 
-Build the packaged application and installer:
+Build the application and installer:
 
 ```powershell
 .\scripts\build.ps1
@@ -86,90 +93,66 @@ Build the packaged application and installer:
 iscc .\installer\OpenRoto.iss
 ```
 
-`build.ps1` also downloads and smoke-tests the official CPython embeddable
-runtime into `dist\OpenRoto\python-runtime`.
-
 For local Resolve testing after a build:
 
 ```powershell
 .\scripts\install-dev.ps1 -AppExecutable .\dist\OpenRoto\OpenRoto.exe
 ```
 
-Fully restart Resolve after installing or updating the menu script.
-OpenRoto installs a deliberately minimal Lua menu entry in Resolve's documented
-`Utility` script folder. Resolve 21.1 may sandbox Workspace Lua scripts so the
-launcher does not use `io`, `os.execute`, `os.remove`, `require`, FFI, or direct
-filesystem probes. It resolves the live Fusion object, verifies the configured
-Python home, clears a Fusion application-data status key, and calls `RunScript`
-on the diagnostic `OpenRoto.py3` bootstrap. Python then performs filesystem and
-process work outside the restricted Lua layer.
+Fully restart Resolve after installing or updating the Workspace script.
 
-## Startup diagnostics
+## Resolve Free integration
 
-The Lua stage reports failures through Resolve's script error output because
-arbitrary Lua file I/O may be blocked. Once Python actually starts, diagnostics
-are written under `%LOCALAPPDATA%\OpenRoto`:
+Resolve Free uses a filesystem handoff because Workspace scripting restrictions can prevent the normal in-process Python bridge from running.
 
-- `bridge-bootstrap.log` — Python environment, Resolve globals, bridge location,
-  function-level bridge tracing and bootstrap failures.
-- `bridge-console.log` — stdout/stderr and tracebacks from `OpenRotoBridge.py`.
-- `app.log` — packaged `OpenRoto.exe` startup, arguments, Python runtime and any
-  uncaught Qt/PyInstaller startup exception.
+The Lua launcher:
 
-Lua and Python also exchange `OpenRoto.BootstrapStatus` through Fusion's
-`SetData`/`GetData` API. This confirms whether Python actually entered without
-using a marker file that the Lua sandbox cannot read.
+- creates a DRT safety snapshot;
+- renders the target clip to `%LOCALAPPDATA%\OpenRoto\FreeExchange`;
+- waits for the OpenRoto Free agent to claim the session;
+- waits for a local apply/cancel control signal;
+- applies the generated Fusion composition and records an acknowledgement.
 
-If the Lua launcher completes but reports that the Python bootstrap never ran,
-check the Resolve edition/version and its scripting restrictions. The bundled
-runtime solves a missing Python installation, but cannot override a product
-sandbox that refuses to execute Python scripts at all.
+The installed Free agent is protected by a singleton mutex. Development installs verify the current agent with a `free-v3` heartbeat so a stale executable cannot silently keep handling new exports.
+
+## Diagnostics
+
+Runtime diagnostics are stored under `%LOCALAPPDATA%\OpenRoto`:
+
+- `free-agent.log` — Resolve Free exchange/claim diagnostics;
+- `app.log` — packaged application startup and uncaught errors;
+- `console.log` — stdout/stderr from the packaged application;
+- bridge logs — Studio/bootstrap diagnostics when that path is used.
+
+Lua also exposes persistent stage information through Fusion application data, including `OpenRoto.LauncherStage`, `OpenRoto.LauncherError` and `OpenRoto.Free.SessionId`.
 
 ## Architecture and safety
 
-- `resolve/OpenRoto.lua` is the sandbox-safe Resolve menu entry. It only uses
-  Resolve/Fusion objects, environment reads and ordinary Lua language features;
-  it does not perform filesystem or process operations.
-- `resolve/OpenRotoEntry.py` is the installed `OpenRoto.py3` diagnostic
-  bootstrap. It records the Python environment, publishes bootstrap status via
-  Fusion application data and executes the separately installed
-  `OpenRotoBridge.py`, whose source is `resolve/OpenRoto.py`.
-- `app/openroto` is the standalone Qt Quick application. It communicates with
-  the Resolve bridge through an authenticated loopback-only JSON-lines socket.
-- The app writes raw masks separately from the final alpha sequence so edge
-  settings can change without repeating AI tracking.
-- Before applying, the bridge verifies the project, timeline, clip ID, trim and
-  a fingerprint of every timeline item. If the edit changed, it refuses to
-  touch the timeline and asks for a new session.
-- The final Fusion graph merges the original media over a transparent
-  background and uses the rendered RGBA mask sequence as the Merge effect mask.
-- If Fusion application fails after creating the compound, the bridge imports
-  the DRT snapshot and restores the original timeline.
-- No footage, prompts or telemetry leave the computer. Network access is used
-  only for package/model downloads and for downloading the CPython runtime at
-  build time; the installed Resolve bridge itself is local-only.
+- `resolve/OpenRoto.lua` is the Resolve Workspace entry point.
+- `resolve/OpenRotoEntry.py` and the bridge scripts implement Studio integration.
+- `app/openroto` is the standalone Qt Quick application.
+- Resolve communication is loopback-only or filesystem-local depending on edition.
+- Session credentials are generated per run; no fixed API key is stored in the repository.
+- The app keeps raw masks separate from final mattes so edge settings can be changed without rerunning tracking.
+- The Resolve bridge validates the target timeline/clip before modifying the edit.
+- If application fails after a timeline mutation begins, OpenRoto uses the DRT safety snapshot to recover where supported.
 
-Session data lives under `%LOCALAPPDATA%\OpenRoto\Sessions`. Input frames are
-temporary. Final mattes remain there because the Fusion Loader references them;
-do not delete a session that is still used by a Resolve project.
+Session data lives under `%LOCALAPPDATA%\OpenRoto\Sessions`. Final matte/removal sequences can remain referenced by Fusion, so do not delete a session directory while a Resolve project still uses it.
 
-## Known preview limitations
+## Privacy
 
-- A signed production installer has not been generated in this repository yet.
-- Resolve PNG renderer naming and the imported Fusion Loader graph need a live
-  end-to-end verification on both Free and Studio before version 1.0.
-- Resolve scripting capabilities differ by edition/version; recent Free builds
-  may impose additional Workspace-script sandbox restrictions that OpenRoto
-  cannot bypass from Lua.
-- The first model load can take several minutes because Hugging Face downloads
-  the selected checkpoint.
-- Direction-only tracking intentionally makes frames outside the selected pass
-  transparent. Use **Both directions** for a complete clip matte.
+OpenRoto does not include telemetry and does not upload footage, points, masks or Resolve project data. Network access is used for explicit package/model downloads and build-time dependency downloads.
+
+## Security
+
+Please do not publish security-sensitive reports as public issues. See [SECURITY.md](SECURITY.md).
+
+## Contributing
+
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for the development and pull-request expectations.
 
 ## License
 
-OpenRoto is released under the [MIT License](LICENSE). SAM2 and other runtime
-components retain their own licenses; see [third-party notices](THIRD_PARTY_NOTICES.md).
+OpenRoto is released under the [MIT License](LICENSE). Runtime and optional model components retain their own licenses; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
-OpenRoto is independent software and is not affiliated with Blackmagic Design,
-DaVinci Resolve, Meta, or KVN Rotoscope.
+OpenRoto is independent software and is not affiliated with, endorsed by or sponsored by Blackmagic Design, DaVinci Resolve, Meta, FGT++/Hitachi Research or Xiaomi Research.
