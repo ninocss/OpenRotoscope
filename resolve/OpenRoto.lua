@@ -1,69 +1,20 @@
 -- OpenRoto menu entry for DaVinci Resolve Free and Studio.
+--
+-- IMPORTANT: Resolve 21.1 can execute Workspace Lua scripts in a restricted
+-- environment where io/package/require/process execution are unavailable. Keep
+-- this launcher deliberately small and do not touch the filesystem from Lua.
+-- Once Python starts, OpenRoto's diagnostic bootstrap owns file logging and all
+-- filesystem/process work.
 
-local ffi_ok, ffi = pcall(require, "ffi")
-local user32 = nil
-local kernel32 = nil
-if ffi_ok then
-    pcall(function()
-        ffi.cdef[[
-            int MessageBoxA(void* hWnd, const char* lpText, const char* lpCaption, unsigned int uType);
-            int SetEnvironmentVariableA(const char* lpName, const char* lpValue);
-        ]]
-        user32 = ffi.load("user32")
-        kernel32 = ffi.load("kernel32")
-    end)
-end
-
-local function localDataPath()
-    local value = os.getenv("LOCALAPPDATA")
-    if value ~= nil and value ~= "" then return value end
-    local userProfile = os.getenv("USERPROFILE")
-    if userProfile ~= nil and userProfile ~= "" then
-        return userProfile .. "\\AppData\\Local"
+local function safePrint(message)
+    if type(print) == "function" then
+        pcall(print, "[OpenRoto] " .. tostring(message))
     end
-    return nil
 end
 
-local function fileExists(path)
-    local handle = io.open(path, "rb")
-    if handle == nil then return false end
-    handle:close()
-    return true
-end
-
-local function logMessage(message)
-    local localData = localDataPath()
-    if localData == nil then return end
-    local dir = localData .. "\\OpenRoto"
-    pcall(function()
-        os.execute('mkdir "' .. dir .. '" 2>nul')
-        local f = io.open(dir .. "\\launcher.log", "a")
-        if f then
-            f:write(os.date("%Y-%m-%d %H:%M:%S ") .. tostring(message) .. "\n")
-            f:close()
-        end
-    end)
-end
-
-local function showDialog(title, text, isError)
-    logMessage(title .. ": " .. text)
-    local flag = isError and 0x10 or 0x40
-    if user32 ~= nil then
-        local ok = pcall(function()
-            user32.MessageBoxA(nil, tostring(text), tostring(title), flag)
-        end)
-        if ok then return end
-    end
-    pcall(function()
-        local safeText = string.gsub(tostring(text), '"', "'")
-        local safeTitle = string.gsub(tostring(title), '"', "'")
-        local cmd = 'powershell -NoProfile -WindowStyle Hidden -Command "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.MessageBox]::Show(\\"'
-            .. safeText
-            .. '\\", \\"'
-            .. safeTitle
-            .. '\\")" 2>nul'
-        os.execute(cmd)
-    end)
+local function fail(message)
+    safePrint("ERROR: " .. tostring(message))
+    error("OpenRoto: " .. tostring(message))
 end
 
 local function resolveGlobal(name)
@@ -77,173 +28,106 @@ local function resolveGlobal(name)
     return value
 end
 
-local function pythonString(value)
-    local escaped = string.gsub(tostring(value), "\\", "\\\\")
-    escaped = string.gsub(escaped, "'", "\\'")
-    return "'" .. escaped .. "'"
-end
-
-logMessage("=== OpenRoto.lua launcher invoked ===")
-logMessage("Lua version=" .. tostring(_VERSION) .. ", ffi=" .. tostring(ffi_ok))
-logMessage("APPDATA=" .. tostring(os.getenv("APPDATA")))
-logMessage("LOCALAPPDATA=" .. tostring(os.getenv("LOCALAPPDATA")))
-logMessage("USERPROFILE=" .. tostring(os.getenv("USERPROFILE")))
-logMessage("OPENROTO_APP=" .. tostring(os.getenv("OPENROTO_APP")))
-logMessage("FUSION_Python3_Home(before)=" .. tostring(os.getenv("FUSION_Python3_Home")))
-logMessage("PYTHONHOME=" .. tostring(os.getenv("PYTHONHOME")))
-
-local appData = os.getenv("APPDATA")
-if appData == nil or appData == "" then
-    showDialog("OpenRoto Error", "Could not locate APPDATA.", true)
-    error("OpenRoto could not locate APPDATA.")
-end
-
-local localData = localDataPath()
-if localData == nil then
-    showDialog("OpenRoto Error", "Could not locate LOCALAPPDATA or USERPROFILE.", true)
-    error("OpenRoto could not locate local application data.")
-end
-
-local appExecutable = os.getenv("OPENROTO_APP")
-local appDir = nil
-if appExecutable ~= nil and appExecutable ~= "" then
-    appDir = string.match(appExecutable, "^(.*)\\[^\\]+$")
-end
-
--- Production installs do not need OPENROTO_APP: the Resolve-specific Python
--- home points at <install>\python-runtime, so its parent is the actual app dir.
-if appDir == nil or appDir == "" then
-    local configuredRuntime = os.getenv("FUSION_Python3_Home")
-    if configuredRuntime ~= nil and configuredRuntime ~= "" then
-        local trimmedRuntime = string.gsub(configuredRuntime, "[\\/]+$", "")
-        local configuredAppDir = string.match(trimmedRuntime, "^(.*)[\\/]python%-runtime$")
-        if configuredAppDir ~= nil and configuredAppDir ~= "" then
-            appDir = configuredAppDir
-            appExecutable = appDir .. "\\OpenRoto.exe"
-        end
-    end
-end
-
-if appDir == nil or appDir == "" then
-    appDir = localData .. "\\Programs\\OpenRoto"
-    appExecutable = appDir .. "\\OpenRoto.exe"
-end
-
-local runtimeDir = appDir .. "\\python-runtime"
-local runtimePython = runtimeDir .. "\\python.exe"
-local runtimeDll = runtimeDir .. "\\python312.dll"
-logMessage("appExecutable=" .. tostring(appExecutable) .. ", exists=" .. tostring(fileExists(appExecutable)))
-logMessage("runtimeDir=" .. tostring(runtimeDir))
-logMessage("runtime python exists=" .. tostring(fileExists(runtimePython)) .. ", python312.dll exists=" .. tostring(fileExists(runtimeDll)))
-
-if not fileExists(appExecutable) then
-    showDialog(
-        "OpenRoto Error",
-        "OpenRoto.exe was not found at:\n" .. appExecutable .. "\n\nReinstall OpenRoto and fully restart DaVinci Resolve.",
-        true
-    )
-    error("OpenRoto executable not found: " .. appExecutable)
-end
-
-if not fileExists(runtimePython) or not fileExists(runtimeDll) then
-    showDialog(
-        "OpenRoto Error",
-        "The bundled Python runtime is missing or incomplete. Reinstall the newest OpenRoto build and fully restart DaVinci Resolve.\n\nExpected: " .. runtimeDir,
-        true
-    )
-    error("Bundled Python runtime incomplete: " .. runtimeDir)
-end
-
--- Resolve/Fusion detects Python dynamically. Pin it to the runtime shipped with
--- OpenRoto before asking Fusion to initialise its Py3 interpreter. The installer
--- also persists this value so a clean Resolve restart sees it from process start.
-if kernel32 ~= nil then
-    local ok, result = pcall(function()
-        return kernel32.SetEnvironmentVariableA("FUSION_Python3_Home", runtimeDir)
-    end)
-    logMessage("SetEnvironmentVariableA(FUSION_Python3_Home): ok=" .. tostring(ok) .. ", result=" .. tostring(result))
-end
-logMessage("FUSION_Python3_Home(after)=" .. tostring(os.getenv("FUSION_Python3_Home")))
-
 local resolveHost = resolveGlobal("resolve") or resolveGlobal("Resolve")
 local fusionHost = resolveGlobal("fusion") or resolveGlobal("fu") or resolveGlobal("app")
+
 if fusionHost == nil and resolveHost ~= nil then
     local ok, value = pcall(function() return resolveHost:Fusion() end)
-    logMessage("resolveHost:Fusion(): ok=" .. tostring(ok) .. ", value=" .. tostring(value))
     if ok then fusionHost = value end
 end
 if fusionHost == nil then
     fusionHost = resolveGlobal("Fusion")
 end
 
-logMessage("resolveHost=" .. tostring(resolveHost) .. ", type=" .. tostring(type(resolveHost)))
-logMessage("fusionHost=" .. tostring(fusionHost) .. ", type=" .. tostring(type(fusionHost)))
+local function getEnv(name)
+    if os ~= nil and type(os.getenv) == "function" then
+        local ok, value = pcall(os.getenv, name)
+        if ok and value ~= nil and value ~= "" then return value end
+    end
+    if fusionHost ~= nil then
+        local ok, value = pcall(function() return fusionHost:GetEnv(name) end)
+        if ok and value ~= nil and value ~= "" then return value end
+    end
+    return nil
+end
+
+local function safeResolveValue(methodName)
+    if resolveHost == nil then return nil end
+    local ok, value = pcall(function()
+        return resolveHost[methodName](resolveHost)
+    end)
+    if ok then return value end
+    return nil
+end
+
+local productName = safeResolveValue("GetProductName")
+local versionString = safeResolveValue("GetVersionString")
+safePrint("launcher invoked; product=" .. tostring(productName) .. ", version=" .. tostring(versionString))
+safePrint("fusion host=" .. tostring(fusionHost))
 
 if fusionHost == nil then
-    showDialog(
-        "OpenRoto Error",
-        "DaVinci Resolve did not expose the Fusion scripting host. Restart Resolve and try again.\n\nSee %LOCALAPPDATA%\\OpenRoto\\launcher.log",
-        true
+    fail("DaVinci Resolve did not expose the Fusion scripting host.")
+end
+
+local appData = getEnv("APPDATA")
+if appData == nil then
+    fail("APPDATA is unavailable in the Resolve scripting environment.")
+end
+
+local runtimeHome = getEnv("FUSION_Python3_Home")
+safePrint("FUSION_Python3_Home=" .. tostring(runtimeHome))
+if runtimeHome == nil then
+    fail(
+        "The OpenRoto Python runtime is not configured. Reinstall the newest " ..
+        "OpenRoto build, fully quit DaVinci Resolve, then start Resolve again."
     )
-    error("OpenRoto could not access the Fusion scripting host.")
 end
 
--- Probe Python before running the real bridge. Fusion can fail to initialise Py3
--- without throwing a useful Lua error, so the Python side must create a marker.
-local probePath = localData .. "\\OpenRoto\\python-probe.log"
-os.remove(probePath)
-local probeCode = "!Py3: import os,sys,time; p=" .. pythonString(probePath)
-    .. "; f=open(p,'w',encoding='utf-8'); f.write(time.strftime('%Y-%m-%d %H:%M:%S ') + 'python=' + sys.version.replace('\\n',' ') + '; executable=' + str(sys.executable) + '; prefix=' + str(sys.prefix)); f.close()"
-local probeOk, probeResult = pcall(function()
-    return fusionHost:Execute(probeCode)
-end)
-logMessage("fusionHost:Execute(Py3 probe): ok=" .. tostring(probeOk) .. ", ret=" .. tostring(probeResult))
+-- SetData/GetData are Fusion application data, not arbitrary filesystem I/O.
+-- They let Lua confirm that the Python bootstrap actually executed without
+-- relying on io.open/os.remove marker files, which are blocked by Resolve's
+-- Workspace-script sandbox.
+local markerKey = "OpenRoto.BootstrapStatus"
+pcall(function() fusionHost:SetData(markerKey, nil) end)
 
-local probeFile = io.open(probePath, "r")
-local probeText = nil
-if probeFile ~= nil then
-    probeText = probeFile:read("*a")
-    probeFile:close()
-end
-logMessage("Python probe marker=" .. tostring(probeText))
+local bridgePath = appData .. [[\Blackmagic Design\DaVinci Resolve\Support\OpenRoto\OpenRoto.py3]]
+safePrint("starting Python bridge: " .. bridgePath)
 
-if not probeOk or probeText == nil or probeText == "" then
-    showDialog(
-        "OpenRoto Python Error",
-        "DaVinci Resolve could not initialise Python 3. OpenRoto now ships its own Python runtime, but Resolve has not loaded it.\n\nFully quit Resolve (including any remaining Resolve/Fusion processes), reinstall OpenRoto, and start Resolve again.\n\nDiagnostic log: %LOCALAPPDATA%\\OpenRoto\\launcher.log",
-        true
-    )
-    error("Resolve Python 3 probe failed. FUSION_Python3_Home=" .. runtimeDir)
-end
-
-local bridgeDir = appData .. [[\Blackmagic Design\DaVinci Resolve\Support\OpenRoto]]
-local bridgePath = bridgeDir .. [[\OpenRoto.py3]]
-local bridgeSourcePath = bridgeDir .. [[\OpenRotoBridge.py]]
-logMessage("bridge bootstrap=" .. bridgePath .. ", exists=" .. tostring(fileExists(bridgePath)))
-logMessage("bridge source=" .. bridgeSourcePath .. ", exists=" .. tostring(fileExists(bridgeSourcePath)))
-
-if not fileExists(bridgePath) or not fileExists(bridgeSourcePath) then
-    showDialog(
-        "OpenRoto Error",
-        "The OpenRoto Resolve bridge is missing or incomplete. Reinstall OpenRoto and restart DaVinci Resolve.",
-        true
-    )
-    error("OpenRoto bridge files missing in " .. bridgeDir)
-end
-
-logMessage("OpenRoto launcher: running diagnostic Python 3 bridge " .. bridgePath)
 local runOk, runResult = pcall(function()
     return fusionHost:RunScript(bridgePath)
 end)
-logMessage("fusionHost:RunScript result: ok=" .. tostring(runOk) .. ", ret=" .. tostring(runResult))
+safePrint("RunScript finished; ok=" .. tostring(runOk) .. ", result=" .. tostring(runResult))
 
-if not runOk or runResult == false then
-    showDialog(
-        "OpenRoto Error",
-        "DaVinci Resolve could not start the OpenRoto Python 3 bridge.\n\nCheck these logs:\n%LOCALAPPDATA%\\OpenRoto\\launcher.log\n%LOCALAPPDATA%\\OpenRoto\\bridge-bootstrap.log\n%LOCALAPPDATA%\\OpenRoto\\bridge-console.log",
-        true
-    )
-    error("OpenRoto Python 3 bridge failed to start: " .. tostring(runResult))
+if not runOk then
+    fail("Resolve could not execute the OpenRoto Python bridge: " .. tostring(runResult))
+end
+if runResult == false then
+    fail("Resolve rejected the OpenRoto Python bridge.")
 end
 
-logMessage("OpenRoto.lua launcher finished normally")
+local markerOk, markerValue = pcall(function()
+    return fusionHost:GetData(markerKey)
+end)
+safePrint("Python bootstrap marker: ok=" .. tostring(markerOk) .. ", value=" .. tostring(markerValue))
+
+if not markerOk or markerValue == nil or markerValue == "" then
+    local editionHint = ""
+    if productName == "DaVinci Resolve" then
+        editionHint =
+            " This is DaVinci Resolve Free; recent Resolve versions restrict " ..
+            "Workspace-script access to Python and operating-system APIs more " ..
+            "aggressively than Studio."
+    end
+    fail(
+        "The Lua launcher ran, but the Python bootstrap never executed." ..
+        editionHint ..
+        " Check whether your Resolve edition/version permits internal Python " ..
+        "scripts, then reinstall OpenRoto and fully restart Resolve."
+    )
+end
+
+if string.sub(tostring(markerValue), 1, 7) == "failed:" then
+    fail("The Python bootstrap failed: " .. tostring(markerValue))
+end
+
+safePrint("launcher finished with Python status=" .. tostring(markerValue))

@@ -7,15 +7,42 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class ResolveLauncherPackagingTests(unittest.TestCase):
-    def test_lua_launcher_targets_python3_bootstrap_and_probes_runtime(self):
+    def test_lua_launcher_is_workspace_sandbox_safe(self):
         launcher = (ROOT / "resolve" / "OpenRoto.lua").read_text(encoding="utf-8")
         self.assertIn("OpenRoto.py3", launcher)
-        self.assertIn("OpenRotoBridge.py", launcher)
-        self.assertIn("!Py3:", launcher)
-        self.assertIn("python-probe.log", launcher)
+        self.assertIn("RunScript", launcher)
+        self.assertIn("SetData", launcher)
+        self.assertIn("GetData", launcher)
         self.assertIn("FUSION_Python3_Home", launcher)
-        self.assertNotIn("py -3.12", launcher)
-        self.assertNotIn("fallback Python", launcher)
+
+        # Check executable lines only. Comments intentionally explain which
+        # Resolve-sandbox facilities must never be reintroduced into the code.
+        executable = "\n".join(
+            line for line in launcher.splitlines() if not line.lstrip().startswith("--")
+        )
+        forbidden = (
+            "io.open",
+            "io.read",
+            "io.write",
+            "os.execute",
+            "os.remove",
+            "require(",
+            'require, "ffi"',
+            "ffi.",
+            "python-probe.log",
+        )
+        for token in forbidden:
+            with self.subTest(token=token):
+                self.assertNotIn(token, executable)
+
+    def test_python_bootstrap_reports_status_without_lua_file_markers(self):
+        bootstrap = (ROOT / "resolve" / "OpenRotoEntry.py").read_text(encoding="utf-8")
+        self.assertIn('STATUS_KEY = "OpenRoto.BootstrapStatus"', bootstrap)
+        self.assertIn('host.SetData(STATUS_KEY, str(value))', bootstrap)
+        self.assertIn('_set_status("entered")', bootstrap)
+        self.assertIn('_set_status("bridge-running")', bootstrap)
+        self.assertIn('_set_status("bridge-returned")', bootstrap)
+        self.assertIn('_set_status(f"failed:', bootstrap)
 
     def test_installer_deploys_bootstrap_bridge_and_python_home(self):
         installer = (ROOT / "installer" / "OpenRoto.iss").read_text(encoding="utf-8")
@@ -27,16 +54,23 @@ class ResolveLauncherPackagingTests(unittest.TestCase):
         self.assertIn('ValueData: "{app}\\python-runtime"', installer)
         self.assertIn("ChangesEnvironment=yes", installer)
 
-    def test_dev_install_deploys_same_bridge_pair(self):
+    def test_dev_install_uses_one_canonical_resolve_location(self):
         script = (ROOT / "scripts" / "install-dev.ps1").read_text(encoding="utf-8")
         self.assertIn(
-            '"resolve\\OpenRotoEntry.py") -Destination (Join-Path $dir "OpenRoto.py3")',
+            'DaVinci Resolve\\Support\\Fusion\\Scripts\\Utility',
             script,
         )
         self.assertIn(
-            '"resolve\\OpenRoto.py") -Destination (Join-Path $dir "OpenRotoBridge.py")',
+            '"resolve\\OpenRotoEntry.py") -Destination (Join-Path $bridgeDir "OpenRoto.py3")',
             script,
         )
+        self.assertIn(
+            '"resolve\\OpenRoto.py") -Destination (Join-Path $bridgeDir "OpenRotoBridge.py")',
+            script,
+        )
+        self.assertEqual(1, script.count('"resolve\\OpenRoto.lua"'))
+        self.assertIn("$legacyScriptDirs", script)
+        self.assertIn("Remove-Item -LiteralPath $path -Force", script)
         self.assertIn('SetEnvironmentVariable("FUSION_Python3_Home"', script)
 
     def test_build_downloads_a_private_resolve_python_runtime(self):

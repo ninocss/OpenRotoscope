@@ -47,12 +47,11 @@ selected and are then available offline.
 - Enough temporary disk space for a lossless PNG sequence of the visible clip
 - Internet access the first time each SAM2 preset is loaded
 
-No system Python installation is required by the release installer. Resolve and
-Fusion require a compatible Python runtime for Python menu scripts, so the
-Windows build now bundles the official CPython 3.12 embeddable runtime and sets
-Resolve's `FUSION_Python3_Home` override to that private copy. Fully quit and
-restart Resolve after installing or updating OpenRoto so the runtime is loaded
-from process start.
+No system Python installation is needed by the release installer. Fusion's
+Python 3 host still needs a compatible CPython runtime on Windows, so OpenRoto
+ships a private official CPython 3.12 embeddable runtime and configures
+`FUSION_Python3_Home` to use it. The OpenRoto Qt application ships separately
+as a PyInstaller build.
 
 ## Development
 
@@ -97,37 +96,44 @@ For local Resolve testing after a build:
 ```
 
 Fully restart Resolve after installing or updating the menu script.
-OpenRoto installs a Lua menu entry in Resolve's documented `Utility` script
-folder. The Lua launcher pins Fusion to the bundled Python runtime, executes a
-small `!Py3:` probe, then calls `RunScript` on a diagnostic `OpenRoto.py3`
-bootstrap. The bootstrap runs the dependency-free `OpenRotoBridge.py` inside
-Resolve, preserving access to the live Resolve scripting objects without using
-external scripting.
+OpenRoto installs a deliberately minimal Lua menu entry in Resolve's documented
+`Utility` script folder. Resolve 21.1 may sandbox Workspace Lua scripts so the
+launcher does not use `io`, `os.execute`, `os.remove`, `require`, FFI, or direct
+filesystem probes. It resolves the live Fusion object, verifies the configured
+Python home, clears a Fusion application-data status key, and calls `RunScript`
+on the diagnostic `OpenRoto.py3` bootstrap. Python then performs filesystem and
+process work outside the restricted Lua layer.
 
 ## Startup diagnostics
 
-Startup is split into four logged stages under `%LOCALAPPDATA%\OpenRoto`:
+The Lua stage reports failures through Resolve's script error output because
+arbitrary Lua file I/O may be blocked. Once Python actually starts, diagnostics
+are written under `%LOCALAPPDATA%\OpenRoto`:
 
-- `launcher.log` — Lua menu invocation, Resolve/Fusion objects, install paths,
-  bundled-runtime checks, Python probe and `RunScript` result.
-- `python-probe.log` — proof that Fusion actually initialized Python 3, including
-  the Python version, executable and prefix it selected.
-- `bridge-bootstrap.log` and `bridge-console.log` — Python environment, Resolve
-  globals, bridge import/compile failures and bridge tracebacks.
+- `bridge-bootstrap.log` — Python environment, Resolve globals, bridge location,
+  function-level bridge tracing and bootstrap failures.
+- `bridge-console.log` — stdout/stderr and tracebacks from `OpenRotoBridge.py`.
 - `app.log` — packaged `OpenRoto.exe` startup, arguments, Python runtime and any
   uncaught Qt/PyInstaller startup exception.
 
-If OpenRoto fails before a window appears, these files identify the exact stage
-instead of relying on Resolve's often-silent script-menu behavior.
+Lua and Python also exchange `OpenRoto.BootstrapStatus` through Fusion's
+`SetData`/`GetData` API. This confirms whether Python actually entered without
+using a marker file that the Lua sandbox cannot read.
+
+If the Lua launcher completes but reports that the Python bootstrap never ran,
+check the Resolve edition/version and its scripting restrictions. The bundled
+runtime solves a missing Python installation, but cannot override a product
+sandbox that refuses to execute Python scripts at all.
 
 ## Architecture and safety
 
-- `resolve/OpenRoto.lua` is the Resolve Free/Studio menu entry. It validates the
-  installation, pins Resolve's Python 3 runtime, runs a Python canary and then
-  executes `OpenRoto.py3` through Fusion's internal `RunScript` API.
+- `resolve/OpenRoto.lua` is the sandbox-safe Resolve menu entry. It only uses
+  Resolve/Fusion objects, environment reads and ordinary Lua language features;
+  it does not perform filesystem or process operations.
 - `resolve/OpenRotoEntry.py` is the installed `OpenRoto.py3` diagnostic
-  bootstrap. It records the Python environment and executes the separately
-  installed `OpenRotoBridge.py`, whose source is `resolve/OpenRoto.py`.
+  bootstrap. It records the Python environment, publishes bootstrap status via
+  Fusion application data and executes the separately installed
+  `OpenRotoBridge.py`, whose source is `resolve/OpenRoto.py`.
 - `app/openroto` is the standalone Qt Quick application. It communicates with
   the Resolve bridge through an authenticated loopback-only JSON-lines socket.
 - The app writes raw masks separately from the final alpha sequence so edge
@@ -150,10 +156,11 @@ do not delete a session that is still used by a Resolve project.
 ## Known preview limitations
 
 - A signed production installer has not been generated in this repository yet.
-- The bundled Python override and final Resolve/Fusion round trip still need
-  live validation on the target Resolve 21.1 Free and Studio builds before 1.0.
 - Resolve PNG renderer naming and the imported Fusion Loader graph need a live
   end-to-end verification on both Free and Studio before version 1.0.
+- Resolve scripting capabilities differ by edition/version; recent Free builds
+  may impose additional Workspace-script sandbox restrictions that OpenRoto
+  cannot bypass from Lua.
 - The first model load can take several minutes because Hugging Face downloads
   the selected checkpoint.
 - Direction-only tracking intentionally makes frames outside the selected pass
