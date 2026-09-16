@@ -13,19 +13,26 @@ $scriptDirs = @(
 $bridgeDir = Join-Path $env:APPDATA "Blackmagic Design\DaVinci Resolve\Support\OpenRoto"
 $freeExchange = Join-Path $env:LOCALAPPDATA "OpenRoto\FreeExchange"
 $freeSessions = Join-Path $env:LOCALAPPDATA "OpenRoto\Sessions"
+$heartbeatPath = Join-Path $env:LOCALAPPDATA "OpenRoto\free-agent-heartbeat.json"
+$agentProtocol = "free-v3"
+$programDataResolve = Join-Path $env:ProgramData "Blackmagic Design\DaVinci Resolve"
 
 $allScriptDirs = @(
     $scriptDirs[0],
     $scriptDirs[1],
-    "C:\ProgramData\Blackmagic Design\DaVinci Resolve\Fusion\Scripts\Utility"
+    (Join-Path $programDataResolve "Fusion\Scripts\Utility"),
+    (Join-Path $programDataResolve "Support\Fusion\Scripts\Utility")
 )
 $legacyBridgeDirs = @(
     (Join-Path $env:APPDATA "Blackmagic Design\DaVinci Resolve\Fusion\OpenRoto"),
-    "C:\ProgramData\Blackmagic Design\DaVinci Resolve\Support\OpenRoto"
+    (Join-Path $programDataResolve "Support\OpenRoto")
 )
 
+# Remove every legacy launcher location first. Resolve can discover more than one
+# script root, so leaving a stale OpenRoto.lua anywhere can make Workspace > Scripts
+# execute an older handoff protocol even when the current user copy is correct.
 foreach ($dir in $allScriptDirs) {
-    foreach ($name in @("OpenRoto.py", "OpenRoto.py3", "OpenRoto Apply.lua")) {
+    foreach ($name in @("OpenRoto.lua", "OpenRoto.py", "OpenRoto.py3", "OpenRoto Apply.lua")) {
         $path = Join-Path $dir $name
         try {
             if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Force }
@@ -33,13 +40,6 @@ foreach ($dir in $allScriptDirs) {
             Write-Warning "Could not remove stale Resolve script $path : $($_.Exception.Message)"
         }
     }
-}
-
-$allUsersLua = "C:\ProgramData\Blackmagic Design\DaVinci Resolve\Fusion\Scripts\Utility\OpenRoto.lua"
-try {
-    if (Test-Path -LiteralPath $allUsersLua) { Remove-Item -LiteralPath $allUsersLua -Force }
-} catch {
-    Write-Warning "Could not remove legacy Resolve script $allUsersLua : $($_.Exception.Message)"
 }
 
 foreach ($dir in $legacyBridgeDirs) {
@@ -53,10 +53,17 @@ foreach ($dir in $legacyBridgeDirs) {
     }
 }
 
+$launcherSource = Join-Path $projectRoot "resolve\OpenRoto.lua"
+$launcherSourceHash = (Get-FileHash -LiteralPath $launcherSource -Algorithm SHA256).Hash
 foreach ($dir in $scriptDirs) {
     New-Item -ItemType Directory -Force -Path $dir | Out-Null
-    Copy-Item -LiteralPath (Join-Path $projectRoot "resolve\OpenRoto.lua") -Destination (Join-Path $dir "OpenRoto.lua") -Force
-    Write-Host "Installed Resolve launcher at $dir"
+    $launcherDestination = Join-Path $dir "OpenRoto.lua"
+    Copy-Item -LiteralPath $launcherSource -Destination $launcherDestination -Force
+    $installedHash = (Get-FileHash -LiteralPath $launcherDestination -Algorithm SHA256).Hash
+    if ($installedHash -ne $launcherSourceHash) {
+        throw "Resolve launcher verification failed at $launcherDestination."
+    }
+    Write-Host "Installed and verified Resolve launcher at $dir"
 }
 
 New-Item -ItemType Directory -Force -Path $bridgeDir | Out-Null
@@ -89,35 +96,72 @@ if ($AppExecutable) {
     New-ItemProperty -Path $runKey -Name "OpenRoto Free Agent" -Value $agentCommand -PropertyType String -Force | Out-Null
     Write-Host "Registered the OpenRoto Free agent for user login."
 
-    # A previous dev/install build may still own the singleton mutex. Stop only
-    # hidden OpenRoto --free-agent processes so the freshly installed build is
-    # guaranteed to become the agent used by Resolve Free. Do not terminate an
-    # active --session UI.
+    # A previous dev/install build may still own the singleton mutex. Find both
+    # packaged and source-run OpenRoto agents by their command line. Never stop a
+    # normal --session UI.
     try {
-        $oldAgents = Get-CimInstance Win32_Process -Filter "Name = 'OpenRoto.exe'" -ErrorAction Stop |
-            Where-Object { $_.CommandLine -and $_.CommandLine -match '(?i)(^|\s)--free-agent(\s|$)' }
+        $oldAgents = Get-CimInstance Win32_Process -ErrorAction Stop |
+            Where-Object {
+                $_.CommandLine -and
+                $_.CommandLine -match '(?i)(^|\s)--free-agent(\s|$)' -and
+                ($_.Name -ieq 'OpenRoto.exe' -or $_.CommandLine -match '(?i)openroto')
+            }
         foreach ($agent in $oldAgents) {
             Write-Host "Stopping previous OpenRoto Free agent process $($agent.ProcessId)."
             Stop-Process -Id $agent.ProcessId -Force -ErrorAction Stop
         }
-        if ($oldAgents) { Start-Sleep -Milliseconds 300 }
+        if ($oldAgents) { Start-Sleep -Milliseconds 500 }
     } catch {
-        Write-Warning "Could not stop a previous OpenRoto Free agent: $($_.Exception.Message)"
+        Write-Warning "Could not enumerate or stop a previous OpenRoto Free agent: $($_.Exception.Message)"
     }
 
-    try {
-        Start-Process -FilePath $appPath -ArgumentList "--free-agent" -WindowStyle Hidden
-        Write-Host "Started the OpenRoto Free agent from $appPath."
-    } catch {
-        Write-Warning "Could not start the OpenRoto Free agent: $($_.Exception.Message)"
+    if (Test-Path -LiteralPath $heartbeatPath) {
+        Remove-Item -LiteralPath $heartbeatPath -Force -ErrorAction Stop
     }
+
+    $agentProcess = Start-Process -FilePath $appPath -ArgumentList "--free-agent" -WindowStyle Hidden -PassThru
+    Write-Host "Started OpenRoto Free agent process $($agentProcess.Id) from $appPath."
+
+    # Do not report a successful install until the process that owns the singleton
+    # mutex proves that it is this exact executable and current handoff protocol.
+    $verified = $false
+    $heartbeat = $null
+    for ($attempt = 0; $attempt -lt 80; $attempt++) {
+        Start-Sleep -Milliseconds 100
+        if (-not (Test-Path -LiteralPath $heartbeatPath)) { continue }
+        try {
+            $heartbeat = Get-Content -LiteralPath $heartbeatPath -Raw | ConvertFrom-Json
+            $heartbeatExe = [System.IO.Path]::GetFullPath([string]$heartbeat.executable)
+            $expectedExe = [System.IO.Path]::GetFullPath($appPath)
+            if (
+                [string]$heartbeat.protocol -eq $agentProtocol -and
+                $heartbeatExe.Equals($expectedExe, [System.StringComparison]::OrdinalIgnoreCase)
+            ) {
+                $verified = $true
+                break
+            }
+        } catch {
+            # The agent writes atomically, but antivirus/indexers can still race a
+            # read. Retry until the verification deadline.
+        }
+    }
+    if (-not $verified) {
+        try { Stop-Process -Id $agentProcess.Id -Force -ErrorAction SilentlyContinue } catch { }
+        $detail = if ($heartbeat) {
+            "Last heartbeat protocol=$($heartbeat.protocol), executable=$($heartbeat.executable)"
+        } else {
+            "No heartbeat was produced. Another stale agent may still own the mutex."
+        }
+        throw "OpenRoto Free agent verification failed. $detail"
+    }
+    Write-Host "Verified current OpenRoto Free agent protocol $agentProtocol (PID $($heartbeat.pid))."
 }
 
-$resolveApi = "C:\ProgramData\Blackmagic Design\DaVinci Resolve\Support\Developer\Scripting"
+$resolveApi = Join-Path $programDataResolve "Support\Developer\Scripting"
 $resolveLib = "C:\Program Files\Blackmagic Design\DaVinci Resolve\fusionscript.dll"
 [Environment]::SetEnvironmentVariable("RESOLVE_SCRIPT_API", $resolveApi, "User")
 [Environment]::SetEnvironmentVariable("RESOLVE_SCRIPT_LIB", $resolveLib, "User")
 
 Write-Host "Installed the Studio Python bridge at $bridgeDir"
 Write-Host "Resolve Free exchange directory: $freeExchange"
-Write-Host "Fully restart DaVinci Resolve so Workspace > Scripts is rescanned."
+Write-Host "Fully restart DaVinci Resolve so Workspace > Scripts reloads the verified launcher."
