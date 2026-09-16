@@ -68,6 +68,26 @@ def _prepare_environment() -> None:
         sys.path.append(str(modules))
 
 
+def _bridge_trace(filename: str):
+    def trace(frame, event, arg):
+        if frame.f_code.co_filename == filename:
+            name = frame.f_code.co_name
+            line = frame.f_lineno
+            if event == "call":
+                _write(f"bridge CALL {name} line={line}")
+            elif event == "return":
+                _write(f"bridge RETURN {name} line={line}")
+            elif event == "exception":
+                exc_type, exc_value, _ = arg
+                _write(
+                    f"bridge EXCEPTION {name} line={line}: "
+                    f"{getattr(exc_type, '__name__', exc_type)}: {exc_value}"
+                )
+        return trace
+
+    return trace
+
+
 def _run() -> None:
     _prepare_environment()
     entry_path = _entry_path()
@@ -99,8 +119,10 @@ def _run() -> None:
     console_path = _root() / "bridge-console.log"
     with console_path.open("a", encoding="utf-8", buffering=1) as console:
         previous_stdout, previous_stderr = sys.stdout, sys.stderr
+        previous_trace = sys.gettrace()
         sys.stdout = console
         sys.stderr = console
+        sys.settrace(_bridge_trace(str(bridge_path)))
         try:
             source = bridge_path.read_text(encoding="utf-8")
             code = compile(source, str(bridge_path), "exec")
@@ -109,6 +131,7 @@ def _run() -> None:
             exec(code, bridge_globals, bridge_globals)
             _write("bridge source returned")
         finally:
+            sys.settrace(previous_trace)
             sys.stdout = previous_stdout
             sys.stderr = previous_stderr
 
