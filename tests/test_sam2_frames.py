@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import sys
 import tempfile
 import unittest
@@ -65,6 +66,15 @@ class Sam2FrameStagingTests(unittest.TestCase):
 
             with self.assertRaisesRegex(InferenceUnavailableError, "did not export"):
                 engine._prepare_predictor_frames()
+
+    def test_click_selection_defers_full_video_initialization_until_tracking(self):
+        segment_source = inspect.getsource(Sam2Engine.segment_frame)
+        track_source = inspect.getsource(Sam2Engine.track)
+
+        self.assertIn("_image_predictor.predict", segment_source)
+        self.assertNotIn("_prepare_predictor_frames", segment_source)
+        self.assertNotIn("_ensure_video_state", segment_source)
+        self.assertIn("_ensure_video_state", track_source)
 
 
 if __name__ == "__main__":
