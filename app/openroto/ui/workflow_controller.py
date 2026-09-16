@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-import os
-import shutil
 import time
 from pathlib import Path
 
-from PySide6.QtCore import Property, QTimer, QUrl, Signal, Slot
+from PySide6.QtCore import Property, QTimer, QUrl, Slot
 
 from openroto.free_handoff import FreeHandoffController
 from openroto.inference.removal import RemovalEngine, RemovalSettings
@@ -20,10 +18,6 @@ _REMOVAL_TIMING_LABELS = (
 
 
 class ObjectRemovalMixin:
-    workflowChanged = Signal()
-    removalChanged = Signal()
-    removalTimingsChanged = Signal()
-
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self._workflow_mode = "rotoscope"
@@ -40,32 +34,33 @@ class ObjectRemovalMixin:
             lambda key, ms: self.workerTiming.emit(key, ms)
         )
         self.workerTiming.connect(self._set_removal_timing)
+        self.frameChanged.connect(self.maskChanged.emit)
 
-    @Property(str, notify=workflowChanged)
+    @Property(str, notify=ApplicationController.changed)
     def workflowMode(self) -> str:
         return self._workflow_mode
 
-    @Property(str, notify=workflowChanged)
+    @Property(str, notify=ApplicationController.changed)
     def viewerMode(self) -> str:
         return self._viewer_mode
 
-    @Property(bool, notify=removalChanged)
+    @Property(bool, notify=ApplicationController.maskChanged)
     def removalReady(self) -> bool:
         return self._removal_ready
 
-    @Property(int, notify=removalChanged)
+    @Property(int, notify=ApplicationController.changed)
     def removalPadding(self) -> int:
         return self._removal_settings.padding
 
-    @Property(float, notify=removalChanged)
+    @Property(float, notify=ApplicationController.changed)
     def removalFeather(self) -> float:
         return self._removal_settings.feather
 
-    @Property(int, notify=removalChanged)
+    @Property(int, notify=ApplicationController.changed)
     def removalTemporalRadius(self) -> int:
         return self._removal_settings.temporal_radius
 
-    @Property(QUrl, notify=removalChanged)
+    @Property(QUrl, notify=ApplicationController.maskChanged)
     def currentRemovalUrl(self) -> QUrl:
         path = self._removal_dir / f"removed_{self.currentFrame:08d}.png"
         if not path.is_file():
@@ -74,7 +69,7 @@ class ObjectRemovalMixin:
         url.setQuery(f"v={self._removal_revision}")
         return url
 
-    @Property("QVariantList", notify=removalTimingsChanged)
+    @Property("QVariantList", notify=ApplicationController.timingsChanged)
     def removalTimings(self) -> list[dict[str, object]]:
         rows: list[dict[str, object]] = []
         for key, label in _REMOVAL_TIMING_LABELS:
@@ -97,7 +92,7 @@ class ObjectRemovalMixin:
         self._viewer_mode = "mask" if value == "rotoscope" else (
             "removed" if self._removal_ready else "mask"
         )
-        self.workflowChanged.emit()
+        self.changed.emit()
 
     @Slot(str)
     def setViewerMode(self, value: str) -> None:
@@ -107,7 +102,7 @@ class ObjectRemovalMixin:
             return
         if value != self._viewer_mode:
             self._viewer_mode = value
-            self.workflowChanged.emit()
+            self.changed.emit()
 
     @Slot(int)
     def setRemovalPadding(self, value: int) -> None:
@@ -115,6 +110,7 @@ class ObjectRemovalMixin:
         if value != self._removal_settings.padding:
             self._removal_settings.padding = value
             self._invalidate_removal()
+            self.changed.emit()
 
     @Slot(float)
     def setRemovalFeather(self, value: float) -> None:
@@ -122,6 +118,7 @@ class ObjectRemovalMixin:
         if value != self._removal_settings.feather:
             self._removal_settings.feather = value
             self._invalidate_removal()
+            self.changed.emit()
 
     @Slot(int)
     def setRemovalTemporalRadius(self, value: int) -> None:
@@ -129,6 +126,7 @@ class ObjectRemovalMixin:
         if value != self._removal_settings.temporal_radius:
             self._removal_settings.temporal_radius = value
             self._invalidate_removal()
+            self.changed.emit()
 
     @Slot()
     def previewRemoval(self) -> None:
@@ -166,8 +164,8 @@ class ObjectRemovalMixin:
         self._removal_ready = True
         self._removal_revision += 1
         self._viewer_mode = "removed"
-        self.removalChanged.emit()
-        self.workflowChanged.emit()
+        self.maskChanged.emit()
+        self.changed.emit()
 
     def _remove_and_apply(self) -> None:
         if not self._removal_ready or self.trackingDirty:
@@ -183,14 +181,16 @@ class ObjectRemovalMixin:
             removal_pattern="removed_%08d.png",
             frame_count=self.manifest.frame_count,
         )
-        self._set_progress_from_worker(1.0, "Waiting for Resolve", "Applying removed-object result")
+        self._set_progress_from_worker(
+            1.0, "Waiting for Resolve", "Applying removed-object result"
+        )
 
     @Slot(str, float)
     def _set_removal_timing(self, key: str, elapsed_ms: float) -> None:
         if key not in self._removal_timings:
             return
         self._removal_timings[key] = max(0.0, float(elapsed_ms))
-        self.removalTimingsChanged.emit()
+        self.timingsChanged.emit()
 
     def _invalidate_removal(self) -> None:
         if not hasattr(self, "_removal_ready"):
@@ -199,9 +199,9 @@ class ObjectRemovalMixin:
         self._removal_ready = False
         if self._viewer_mode == "removed":
             self._viewer_mode = "mask"
-            self.workflowChanged.emit()
+            self.changed.emit()
         if changed:
-            self.removalChanged.emit()
+            self.maskChanged.emit()
 
 
 class WorkflowController(ObjectRemovalMixin, ApplicationController):
