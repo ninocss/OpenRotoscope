@@ -16,6 +16,9 @@ jobs:
         with:
           python-version: "3.12"
           enable-cache: true
+      - name: Validate bundled Resolve Python runtime
+        shell: pwsh
+        run: .\scripts\prepare-python-runtime.ps1 -Destination "$env:RUNNER_TEMP\OpenRoto-Python"
       - name: Create test environment
         shell: pwsh
         run: |
