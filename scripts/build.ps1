@@ -77,6 +77,13 @@ uv pip install --python $pythonExe -e "$projectRoot[inference,dev]"
     --name OpenRoto `
     --paths (Join-Path $projectRoot "app") `
     --add-data "$(Join-Path $projectRoot 'app\openroto\ui\Main.qml');openroto/ui" `
+    --add-data "$(Join-Path $projectRoot 'app\openroto\ui\RotoTheme.qml');openroto/ui" `
+    --add-data "$(Join-Path $projectRoot 'app\openroto\ui\GlassPanel.qml');openroto/ui" `
+    --add-data "$(Join-Path $projectRoot 'app\openroto\ui\RotoButton.qml');openroto/ui" `
+    --add-data "$(Join-Path $projectRoot 'app\openroto\ui\RotoSlider.qml');openroto/ui" `
+    --add-data "$(Join-Path $projectRoot 'app\openroto\ui\RotoComboBox.qml');openroto/ui" `
+    --add-data "$(Join-Path $projectRoot 'app\openroto\ui\RotoSwitch.qml');openroto/ui" `
+    --add-data "$(Join-Path $projectRoot 'app\openroto\ui\StatusPill.qml');openroto/ui" `
     --add-data "$(Join-Path $projectRoot 'app\openroto\ui\PolishedMain.qml');openroto/ui" `
     --add-data "$(Join-Path $projectRoot 'app\openroto\ui\TimedMain.qml');openroto/ui" `
     --add-data "$(Join-Path $projectRoot 'app\openroto\ui\ObjectRemovalMain.qml');openroto/ui" `
