@@ -21,14 +21,19 @@ class UiResponsivenessContractTests(unittest.TestCase):
         removal = (ROOT / "app" / "openroto" / "ui" / "ObjectRemovalMain.qml").read_text(
             encoding="utf-8"
         )
+        removal_models = (
+            ROOT / "app" / "openroto" / "ui" / "RemovalModelsMain.qml"
+        ).read_text(encoding="utf-8")
         model_manager = (ROOT / "app" / "openroto" / "ui" / "model_manager.py").read_text(
             encoding="utf-8"
         )
 
-        self.assertIn('"ObjectRemovalMain.qml"', main)
+        self.assertIn('"RemovalModelsMain.qml"', main)
         self.assertIn("PolishedMain.qml", build)
         self.assertIn("TimedMain.qml", build)
         self.assertIn("ObjectRemovalMain.qml", build)
+        self.assertIn("RemovalModelsMain.qml", build)
+        self.assertIn("openroto\\removal_backends", build)
         self.assertIn("component CenteredTip", polished)
         self.assertIn("component SubjectMarker", polished)
         self.assertNotIn('text: pointItem.modelData.positive ? "+"', polished)
@@ -43,6 +48,9 @@ class UiResponsivenessContractTests(unittest.TestCase):
         self.assertIn("TimedMain {", removal)
         self.assertIn('text: "Rotoscope"', removal)
         self.assertIn('text: "Remove"', removal)
+        self.assertIn("ObjectRemovalMain {", removal_models)
+        self.assertIn("Object Removal Models", removal_models)
+        self.assertIn("Benchmark 17 frames", removal_models)
 
     def test_session_masks_use_fast_lossless_png_writes(self):
         matte = (ROOT / "app" / "openroto" / "inference" / "matte.py").read_text(
