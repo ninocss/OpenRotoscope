@@ -3,10 +3,11 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
-from PySide6.QtCore import Property, QObject, QUrl, Signal, Slot
+from PySide6.QtCore import Property, QObject, QSettings, QUrl, Signal, Slot
 
 from openroto.free_handoff import FreeHandoffController
 from openroto.inference.removal import RemovalEngine, RemovalSettings
+from openroto.inference.removal_backends import REMOVAL_BACKENDS, backend_status
 from openroto.inference.removal_comp import fusion_removal_comp_text
 from openroto.ui.controller import ApplicationController
 
@@ -27,7 +28,11 @@ class RemovalController(QObject):
         self._app = app_controller
         self._workflow_mode = "rotoscope"
         self._viewer_mode = "mask"
-        self._settings = RemovalSettings()
+        self._settings_store = QSettings("OpenRoto", "OpenRoto")
+        saved_backend = str(self._settings_store.value("removalBackend", "temporal"))
+        if saved_backend not in REMOVAL_BACKENDS:
+            saved_backend = "temporal"
+        self._settings = RemovalSettings(backend=saved_backend)
         self._output_dir = Path(app_controller.manifest.matte_dir) / "removed"
         self._ready = False
         self._revision = 0
@@ -37,9 +42,6 @@ class RemovalController(QObject):
         self._engine = RemovalEngine(app_controller.manifest.frames_dir, app_controller._raw_dir)
         self._engine.set_timing_callback(self._set_timing)
 
-        # Frame navigation emits pointsChanged in the rotoscope controller, so do
-        # not use that signal as a removal invalidation trigger. trackingStateChanged
-        # is emitted when a real prompt/model edit makes a previously tracked mask dirty.
         app_controller.trackingStateChanged.connect(self._on_tracking_state_changed)
         app_controller.changed.connect(self._on_app_changed)
         app_controller.frameChanged.connect(self.changed.emit)
@@ -56,6 +58,18 @@ class RemovalController(QObject):
     @Property(bool, notify=changed)
     def ready(self) -> bool:
         return self._ready
+
+    @Property(str, notify=changed)
+    def backend(self) -> str:
+        return self._settings.backend
+
+    @Property("QVariantMap", notify=changed)
+    def backendInfo(self) -> dict[str, object]:
+        return backend_status(self._settings.backend)
+
+    @Property("QVariantList", notify=changed)
+    def backends(self) -> list[dict[str, object]]:
+        return [backend_status(backend_id) for backend_id in ("temporal", "fgt", "svor")]
 
     @Property(int, notify=changed)
     def padding(self) -> int:
@@ -113,6 +127,19 @@ class RemovalController(QObject):
             self._viewer_mode = value
             self.changed.emit()
 
+    @Slot(str)
+    def setBackend(self, value: str) -> None:
+        if value not in REMOVAL_BACKENDS or value == self._settings.backend:
+            return
+        self._settings.backend = value
+        self._settings_store.setValue("removalBackend", value)
+        self._invalidate()
+        self.changed.emit()
+
+    @Slot()
+    def refreshBackends(self) -> None:
+        self.changed.emit()
+
     @Slot(int)
     def setPadding(self, value: int) -> None:
         value = max(0, min(32, int(value)))
@@ -165,9 +192,6 @@ class RemovalController(QObject):
         ]
 
     def _ensure_full_tracking(self) -> None:
-        # Object removal always needs a mask for every frame because it writes a
-        # full-length replacement sequence. A Forward/Backward roto pass is valid
-        # for matte work, but incomplete for removal, so normalize to Both here.
         if self._app.trackingDirection != "both":
             self._app.setTrackingDirection("both")
 
@@ -200,11 +224,18 @@ class RemovalController(QObject):
     def _prepare(self) -> None:
         self._ensure_full_tracking()
         self._validate_output_parent()
+        status = backend_status(self._settings.backend)
+        if not bool(status["available"]):
+            raise RuntimeError(
+                f"{status['display_name']} is not ready: {status['status']}. "
+                "Configure the local removal backend and refresh Settings."
+            )
         self._engine.remove(
             self._app.manifest.frame_count,
             self._output_dir,
             self._settings,
             self._app._worker_progress,
+            fps=self._app.manifest.fps,
         )
         self._validate_output()
         self._ready = True
@@ -258,8 +289,6 @@ class RemovalController(QObject):
             stale.unlink(missing_ok=True)
         app._send_control("apply")
         app._apply_requested = True
-        # requestClose() treats this state specially and will not interrupt Resolve
-        # while it is creating/importing the compound clip.
         app._set_progress_from_worker(
             0.98, "Waiting for Resolve", "Applying the removed-object result"
         )
@@ -293,9 +322,6 @@ class RemovalController(QObject):
 
     @Slot(str, str)
     def _on_operation_finished(self, status: str, detail: str) -> None:
-        # This slot runs after ApplicationController's own completion slot because
-        # it is connected later. Give removal previews their workflow-specific
-        # final status without interfering with Resolve's apply/waiting state.
         if (
             status == "Ready"
             and self._workflow_mode == "remove"

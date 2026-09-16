@@ -126,9 +126,6 @@ PolishedMain {
         }
     }
 
-    // Cover the base settings button with the expanded settings entry. This keeps
-    // the inherited layout stable while adding general UI preferences alongside
-    // the existing model controls.
     Button {
         parent: window.contentItem
         z: 1600
@@ -265,7 +262,7 @@ PolishedMain {
                                 }
                                 Text {
                                     Layout.fillWidth: true
-                                    text: "Show live Model Load, Embedding, Predict, Preview, Init State and Propagate timings over the viewer."
+                                    text: "Show live selection and removal timings. Measurements keep running while this is hidden."
                                     color: window.secondary
                                     font.family: "Segoe UI Variable Text"
                                     font.pixelSize: 10
@@ -375,6 +372,95 @@ PolishedMain {
                                         else
                                             window.modelManager.downloadModel(modelCard.modelData.id)
                                     }
+                                }
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 1
+                        Layout.leftMargin: 18
+                        Layout.rightMargin: 18
+                        Layout.topMargin: 4
+                        color: window.border
+                    }
+                    Text {
+                        Layout.leftMargin: 18
+                        text: "Object removal backends"
+                        color: window.text
+                        font.family: "Segoe UI Variable Display"
+                        font.pixelSize: 15
+                        font.weight: Font.DemiBold
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        Layout.leftMargin: 18
+                        Layout.rightMargin: 18
+                        text: "Temporal Fill is built in. FGT++ and SVOR run in isolated local Python environments so their older/heavier dependencies do not affect OpenRoto or Resolve."
+                        color: window.secondary
+                        font.family: "Segoe UI Variable Text"
+                        font.pixelSize: 10
+                        wrapMode: Text.WordWrap
+                    }
+                    Repeater {
+                        model: window.modelManager.removalBackends
+                        delegate: Rectangle {
+                            id: backendCard
+                            required property var modelData
+                            Layout.fillWidth: true
+                            Layout.leftMargin: 18
+                            Layout.rightMargin: 18
+                            Layout.preferredHeight: 82
+                            radius: 8
+                            color: window.panel2
+                            border.width: 1
+                            border.color: window.border
+                            ColumnLayout {
+                                anchors.fill: parent
+                                anchors.margins: 11
+                                spacing: 2
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    Text {
+                                        text: backendCard.modelData.display_name
+                                        color: window.text
+                                        font.family: "Segoe UI Variable Text"
+                                        font.pixelSize: 12
+                                        font.weight: Font.DemiBold
+                                    }
+                                    Text {
+                                        text: backendCard.modelData.status
+                                        color: backendCard.modelData.available ? window.success : window.warning
+                                        font.family: "Segoe UI Variable Text"
+                                        font.pixelSize: 9
+                                    }
+                                    Item { Layout.fillWidth: true }
+                                    Text {
+                                        text: backendCard.modelData.license
+                                        color: window.muted
+                                        font.family: "Segoe UI Variable Text"
+                                        font.pixelSize: 9
+                                    }
+                                }
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: backendCard.modelData.quality + " quality  ·  " + backendCard.modelData.speed + "  ·  " + backendCard.modelData.vram
+                                    color: window.secondary
+                                    font.family: "Segoe UI Variable Text"
+                                    font.pixelSize: 9
+                                    elide: Text.ElideRight
+                                }
+                                Text {
+                                    Layout.fillWidth: true
+                                    visible: backendCard.modelData.id !== "temporal"
+                                    text: backendCard.modelData.available
+                                        ? backendCard.modelData.root
+                                        : "Configure " + backendCard.modelData.python_env + " and " + backendCard.modelData.root_env
+                                    color: window.muted
+                                    font.family: "Cascadia Mono"
+                                    font.pixelSize: 8
+                                    elide: Text.ElideMiddle
                                 }
                             }
                         }

@@ -11,6 +11,8 @@ from typing import Callable
 import numpy as np
 from PIL import Image, ImageFilter
 
+from openroto.inference.removal_backends import run_external_backend
+
 ProgressCallback = Callable[[float, str], None]
 TimingCallback = Callable[[str, float], None]
 
@@ -20,6 +22,7 @@ class RemovalSettings:
     padding: int = 8
     feather: float = 2.0
     temporal_radius: int = 12
+    backend: str = "temporal"
 
     def validate(self) -> None:
         if not 0 <= self.padding <= 32:
@@ -28,16 +31,12 @@ class RemovalSettings:
             raise ValueError("feather must be between 0 and 24 pixels")
         if not 1 <= self.temporal_radius <= 60:
             raise ValueError("temporal_radius must be between 1 and 60 frames")
+        if self.backend not in {"temporal", "fgt", "svor"}:
+            raise ValueError(f"unsupported removal backend: {self.backend}")
 
 
 class RemovalEngine:
-    """Local temporally-aware object removal with bounded working memory.
-
-    Masked pixels are reconstructed from the nearest temporal frame where that
-    pixel is visible, then fall back to a spatial estimate for regions hidden in
-    the whole search window. Only a small LRU of decoded RGB frames is kept so
-    long or 4K clips do not require loading the entire sequence into RAM.
-    """
+    """Video object removal with built-in and optional isolated model backends."""
 
     def __init__(self, frames_dir: str | Path, masks_dir: str | Path) -> None:
         self.frames_dir = Path(frames_dir)
@@ -60,6 +59,8 @@ class RemovalEngine:
         output_dir: str | Path,
         settings: RemovalSettings,
         progress: ProgressCallback | None = None,
+        *,
+        fps: float = 24.0,
     ) -> Path:
         settings.validate()
         if frame_count <= 0:
@@ -74,57 +75,141 @@ class RemovalEngine:
         destination.mkdir(parents=True, exist_ok=False)
 
         started = time.perf_counter_ns()
-        # Decode one pair eagerly so missing/corrupt input fails before any long
-        # operation starts. The LRU keeps this data for frame zero's fill pass.
         self._load_frame(0)
         self._load_mask(0, settings.padding)
         self._report("removal_prepare", started)
         if progress:
             progress(0.10, "Preparing removal frames")
 
+        try:
+            if settings.backend == "temporal":
+                self._remove_temporal(frame_count, destination, settings, progress)
+            else:
+                self._remove_external(frame_count, destination, settings, fps, progress)
+        finally:
+            self._load_frame.cache_clear()
+            self._load_mask.cache_clear()
+
+        if progress:
+            progress(1.0, "Removal ready")
+        return destination
+
+    def _remove_temporal(
+        self,
+        frame_count: int,
+        destination: Path,
+        settings: RemovalSettings,
+        progress: ProgressCallback | None,
+    ) -> None:
         started = time.perf_counter_ns()
+        for index in range(frame_count):
+            if self._cancelled.is_set():
+                raise InterruptedError("Object removal was cancelled")
+            target = self._load_frame(index)
+            mask = self._load_mask(index, settings.padding)
+            result = self._fill_frame(
+                index,
+                frame_count,
+                settings.padding,
+                settings.temporal_radius,
+            )
+            composite = self._masked_composite(target, result, mask, settings.feather)
+            Image.fromarray(composite, mode="RGB").save(
+                destination / f"removed_{index:08d}.png", compress_level=1
+            )
+            if progress:
+                fraction = (index + 1) / frame_count
+                progress(
+                    0.10 + 0.88 * fraction,
+                    f"Removing object {index + 1}/{frame_count}",
+                )
+        self._report("removal_inpaint", started)
+
+    def _remove_external(
+        self,
+        frame_count: int,
+        destination: Path,
+        settings: RemovalSettings,
+        fps: float,
+        progress: ProgressCallback | None,
+    ) -> None:
+        generated = destination.parent / f".{settings.backend}-generated"
+        backend_masks = destination.parent / f".{settings.backend}-masks"
+        shutil.rmtree(generated, ignore_errors=True)
+        shutil.rmtree(backend_masks, ignore_errors=True)
+        backend_masks.mkdir(parents=True, exist_ok=False)
         try:
             for index in range(frame_count):
                 if self._cancelled.is_set():
                     raise InterruptedError("Object removal was cancelled")
-                target = self._load_frame(index)
-                mask = self._load_mask(index, settings.padding)
-                result = self._fill_frame(
-                    index,
-                    frame_count,
-                    settings.padding,
-                    settings.temporal_radius,
+                padded = self._load_mask(index, settings.padding) * 255
+                Image.fromarray(padded.astype(np.uint8), mode="L").save(
+                    backend_masks / f"mask_{index:08d}.png", compress_level=1
                 )
-                alpha = mask.astype(np.float32)
-                if settings.feather > 0:
-                    feathered = Image.fromarray((alpha * 255).astype(np.uint8)).filter(
-                        ImageFilter.GaussianBlur(radius=settings.feather)
+            run_external_backend(
+                settings.backend,
+                frames_dir=self.frames_dir,
+                masks_dir=backend_masks,
+                output_dir=generated,
+                frame_count=frame_count,
+                fps=fps,
+                padding=settings.padding,
+                feather=settings.feather,
+                temporal_radius=settings.temporal_radius,
+                progress=progress,
+                timing=self._timing_callback,
+                cancelled=self._cancelled.is_set,
+            )
+            for index in range(frame_count):
+                if self._cancelled.is_set():
+                    raise InterruptedError("Object removal was cancelled")
+                generated_path = generated / f"removed_{index:08d}.png"
+                if not generated_path.is_file():
+                    raise RuntimeError(
+                        f"The {settings.backend} backend did not return frame {index + 1}."
                     )
-                    alpha = np.asarray(feathered, dtype=np.float32) / 255.0
-                alpha = alpha[..., None]
-                composite = (
-                    target.astype(np.float32) * (1.0 - alpha)
-                    + result.astype(np.float32) * alpha
-                ).clip(0, 255).astype(np.uint8)
+                target = self._load_frame(index)
+                with Image.open(generated_path) as image:
+                    model_result = np.asarray(image.convert("RGB"), dtype=np.uint8)
+                if model_result.shape != target.shape:
+                    model_result = np.asarray(
+                        Image.fromarray(model_result, mode="RGB").resize(
+                            (target.shape[1], target.shape[0]), Image.Resampling.LANCZOS
+                        ),
+                        dtype=np.uint8,
+                    )
+                mask = self._load_mask(index, settings.padding)
+                composite = self._masked_composite(target, model_result, mask, settings.feather)
                 Image.fromarray(composite, mode="RGB").save(
                     destination / f"removed_{index:08d}.png", compress_level=1
                 )
                 if progress:
-                    fraction = (index + 1) / frame_count
                     progress(
-                        0.10 + 0.88 * fraction,
-                        f"Removing object {index + 1}/{frame_count}",
+                        0.92 + 0.07 * ((index + 1) / frame_count),
+                        f"Finalizing {index + 1}/{frame_count}",
                     )
         finally:
-            # Drop decoded full-resolution arrays as soon as the pass is done or
-            # cancelled. This matters for repeated previews on 4K footage.
-            self._load_frame.cache_clear()
-            self._load_mask.cache_clear()
+            shutil.rmtree(generated, ignore_errors=True)
+            shutil.rmtree(backend_masks, ignore_errors=True)
 
-        self._report("removal_inpaint", started)
-        if progress:
-            progress(1.0, "Removal ready")
-        return destination
+    @staticmethod
+    def _masked_composite(
+        target: np.ndarray,
+        replacement: np.ndarray,
+        mask: np.ndarray,
+        feather: float,
+    ) -> np.ndarray:
+        alpha = mask.astype(np.float32)
+        if feather > 0:
+            feathered = Image.fromarray((alpha * 255).astype(np.uint8)).filter(
+                ImageFilter.GaussianBlur(radius=feather)
+            )
+            alpha = np.asarray(feathered, dtype=np.float32) / 255.0
+        alpha = alpha[..., None]
+        return (
+            target.astype(np.float32) * (1.0 - alpha)
+            + replacement.astype(np.float32) * alpha
+        ).clip(0, 255).astype(np.uint8)
 
     def _fill_frame(
         self,
@@ -149,8 +234,6 @@ class RemovalEngine:
             if after < frame_count:
                 order.append(after)
 
-        # Sparse global references help when the object remains stationary for
-        # longer than the local temporal radius.
         step = max(1, frame_count // 12)
         order.extend(i for i in range(0, frame_count, step) if i != index)
 
@@ -198,8 +281,6 @@ class RemovalEngine:
         with Image.open(path) as image:
             mask = image.convert("L")
             if padding > 0:
-                # MaxFilter requires an odd kernel size. Cap it to keep the
-                # dilation practical while still matching the UI's 32 px limit.
                 kernel = min(65, padding * 2 + 1)
                 mask = mask.filter(ImageFilter.MaxFilter(kernel))
             return (np.asarray(mask, dtype=np.uint8) > 0).astype(np.uint8)
