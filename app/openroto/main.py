@@ -20,7 +20,7 @@ from openroto.inference.model_cache import model_is_installed
 from openroto.ui.controller import ApplicationController
 from openroto.ui.mica import apply_mica
 from openroto.ui.model_manager import ModelManager
-from openroto.ui.removal_controller import RemovalController
+from openroto.ui.removal_backend_controller import AdvancedRemovalController
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -77,7 +77,7 @@ def main(argv: list[str] | None = None) -> int:
 
     engine = QQmlApplicationEngine()
     controller = FreeHandoffController(manifest) if arguments.handoff else ApplicationController(manifest)
-    removal_controller = RemovalController(controller)
+    removal_controller = AdvancedRemovalController(controller)
     model_manager = ModelManager(controller)
     engine.setInitialProperties(
         {
@@ -86,7 +86,7 @@ def main(argv: list[str] | None = None) -> int:
             "removalController": removal_controller,
         }
     )
-    qml_path = Path(__file__).with_name("ui") / "ObjectRemovalMain.qml"
+    qml_path = Path(__file__).with_name("ui") / "RemovalModelsMain.qml"
     engine.load(QUrl.fromLocalFile(str(qml_path)))
     if not engine.rootObjects():
         removal_controller.close()
