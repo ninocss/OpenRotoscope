@@ -25,6 +25,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--mode", choices=("rotoscope", "remove"), default="rotoscope")
     parser.add_argument("--theme", choices=("system", "light", "dark"), default="system")
+    parser.add_argument("--settings", action="store_true")
     return parser.parse_args()
 
 
@@ -34,7 +35,7 @@ os.environ["QT_SCALE_FACTOR"] = str(ARGS.scale)
 os.environ.setdefault("QT_QUICK_CONTROLS_STYLE", "Basic")
 
 from PIL import Image
-from PySide6.QtCore import QTimer, QUrl
+from PySide6.QtCore import QMetaObject, QTimer, QUrl
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuick import QQuickWindow
 from PySide6.QtWidgets import QApplication
@@ -128,6 +129,12 @@ def run() -> int:
         window.setWidth(ARGS.width)
         window.setHeight(ARGS.height)
         window.show()
+        if ARGS.settings:
+            signal = getattr(window, "settingsRequested", None)
+            if signal is not None and hasattr(signal, "emit"):
+                signal.emit()
+            elif not QMetaObject.invokeMethod(window, "settingsRequested"):
+                raise RuntimeError("Could not open the Settings popup")
 
         result = {"ok": False}
 
@@ -157,6 +164,7 @@ def run() -> int:
                             "image_pixels": [image.width(), image.height()],
                             "mode": ARGS.mode,
                             "theme": ARGS.theme,
+                            "settings": ARGS.settings,
                             "output": str(ARGS.output),
                         },
                         sort_keys=True,
