@@ -37,6 +37,7 @@ jobs:
           .\.venv\Scripts\pyside6-qmllint.exe app\openroto\ui\PolishedMain.qml
           .\.venv\Scripts\pyside6-qmllint.exe app\openroto\ui\TimedMain.qml
           .\.venv\Scripts\pyside6-qmllint.exe app\openroto\ui\ObjectRemovalMain.qml
+          .\.venv\Scripts\pyside6-qmllint.exe app\openroto\ui\RemovalModelsMain.qml
       - name: Install Inno Setup
         shell: pwsh
         run: choco install innosetup --yes --no-progress
