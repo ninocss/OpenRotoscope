@@ -1,9 +1,10 @@
 pragma ComponentBehavior: Bound
 
+import QtCore
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Layouts
 import QtQuick.Effects
+import QtQuick.Layouts
 import QtQuick.Window
 
 ApplicationWindow {
@@ -13,31 +14,37 @@ ApplicationWindow {
 
     width: 1360
     height: 850
-    minimumWidth: 1080
+    minimumWidth: 1120
     minimumHeight: 700
     visible: true
     title: "OpenRoto — " + window.appController.clipName
     color: "transparent"
 
-    readonly property bool dark: window.appController.darkMode
+    Settings {
+        id: interfaceSettings
+        category: "Interface"
+        property string themeMode: "system"
+    }
+
+    property alias themeMode: interfaceSettings.themeMode
+    readonly property bool dark: interfaceSettings.themeMode === "dark"
+        || (interfaceSettings.themeMode === "system" && window.appController.darkMode)
     readonly property bool blocked: window.appController.busy || window.modelManager.busy
-    readonly property color bg: dark ? "#EA1B1B1B" : "#EEF3F3F3"
-    readonly property color panel: dark ? "#F02A2A2A" : "#FAFFFFFF"
-    readonly property color panel2: dark ? "#F4343434" : "#FFFFFFFF"
-    readonly property color viewerBg: "#0D0D0D"
-    readonly property color border: dark ? "#2EFFFFFF" : "#22000000"
-    readonly property color strongBorder: dark ? "#46FFFFFF" : "#36000000"
-    readonly property color text: dark ? "#F4F4F4" : "#191919"
-    readonly property color secondary: dark ? "#B6B6B6" : "#5E5E5E"
-    readonly property color muted: dark ? "#858585" : "#777777"
-    readonly property color accent: dark ? "#60CDFF" : "#0067C0"
-    readonly property color accentPressed: dark ? "#4CB6E8" : "#005A9E"
-    readonly property color accentSoft: dark ? "#2460CDFF" : "#170067C0"
-    readonly property color danger: dark ? "#FF7888" : "#C42B1C"
-    readonly property color dangerSoft: dark ? "#20FF7888" : "#14C42B1C"
-    readonly property color success: dark ? "#6CCB9F" : "#107C5C"
-    readonly property color warning: dark ? "#FCE100" : "#9D5D00"
-    readonly property int anim: window.appController.reducedMotion ? 0 : 120
+    readonly property int motionDuration: window.appController.reducedMotion ? 0 : 120
+
+    RotoTheme { id: theme; dark: window.dark }
+    readonly property var uiTheme: theme
+
+    property Component workflowSwitcherComponent: null
+    property Component customSidePanelComponent: null
+    property url viewerFrameSource: window.appController.currentFrameUrl
+    property bool maskOverlayEnabled: true
+    property bool selectionPointsVisible: true
+    property bool selectionEnabled: true
+    property string viewerTitle: "Viewer"
+    property int sidePanelWidth: 332
+
+    signal settingsRequested()
 
     function resetViewer() {
         imageStack.zoom = 1
@@ -47,176 +54,32 @@ ApplicationWindow {
 
     component CenteredTip: ToolTip {
         id: tip
-        delay: 350
-        timeout: 4500
+        delay: 420
+        timeout: 5000
         padding: 8
         contentItem: Text {
             text: tip.text
-            color: window.dark ? "#F6F6F6" : "#202020"
-            font.family: "Segoe UI Variable Text"
-            font.pixelSize: 11
+            color: theme.text
+            font.family: theme.fontFamily
+            font.pixelSize: 10
             horizontalAlignment: Text.AlignHCenter
             verticalAlignment: Text.AlignVCenter
+            wrapMode: Text.WordWrap
         }
         background: Rectangle {
-            radius: 6
-            color: window.dark ? "#F2393939" : "#FAFFFFFF"
+            radius: theme.radiusSm
+            color: theme.surfaceRaised
             border.width: 1
-            border.color: window.strongBorder
-        }
-    }
-
-    component Panel: Rectangle {
-        radius: 8
-        color: window.panel
-        border.width: 1
-        border.color: window.border
-    }
-
-    component FluentButton: Button {
-        id: control
-        property bool primary: false
-        property bool selected: false
-        property bool dangerStyle: false
-        property string toolTip: ""
-        implicitHeight: 34
-        leftPadding: 12
-        rightPadding: 12
-        font.family: "Segoe UI Variable Text"
-        font.pixelSize: 12
-        font.weight: primary ? Font.DemiBold : Font.Normal
-        contentItem: Text {
-            text: control.text
-            color: control.primary ? "white" : control.dangerStyle ? window.danger : window.text
-            font: control.font
-            horizontalAlignment: Text.AlignHCenter
-            verticalAlignment: Text.AlignVCenter
-            elide: Text.ElideRight
-        }
-        background: Rectangle {
-            radius: 6
-            color: control.primary
-                ? (control.down ? window.accentPressed : window.accent)
-                : control.selected ? window.accentSoft
-                : control.hovered ? (window.dark ? "#3FFFFFFF" : "#10000000")
-                : "transparent"
-            border.width: control.primary || control.selected || control.visualFocus ? 1 : 0
-            border.color: control.primary || control.selected ? window.accent : window.strongBorder
-            Behavior on color { ColorAnimation { duration: window.anim } }
-        }
-        CenteredTip {
-            visible: control.hovered && control.toolTip.length > 0
-            text: control.toolTip
-            x: Math.round((control.width - width) / 2)
-            y: control.height + 5
-        }
-    }
-
-    component ToolButtonFluent: Button {
-        id: control
-        property string toolTip: ""
-        property bool selected: false
-        implicitWidth: 34
-        implicitHeight: 34
-        font.family: "Segoe UI Symbol"
-        font.pixelSize: 16
-        contentItem: Text {
-            text: control.text
-            color: control.selected ? window.accent : window.text
-            font: control.font
-            horizontalAlignment: Text.AlignHCenter
-            verticalAlignment: Text.AlignVCenter
-        }
-        background: Rectangle {
-            radius: 6
-            color: control.selected ? window.accentSoft
-                : control.hovered ? (window.dark ? "#3FFFFFFF" : "#10000000")
-                : "transparent"
-            border.width: control.selected || control.visualFocus ? 1 : 0
-            border.color: control.selected ? window.accent : window.strongBorder
-        }
-        CenteredTip {
-            visible: control.hovered && control.toolTip.length > 0
-            text: control.toolTip
-            x: Math.round((control.width - width) / 2)
-            y: control.height + 5
-        }
-    }
-
-    component StatusChip: Rectangle {
-        id: chip
-        property string label: ""
-        property color dotColor: window.accent
-        property string toolTip: ""
-        implicitWidth: row.implicitWidth + 18
-        implicitHeight: 28
-        radius: 6
-        color: window.dark ? "#78323232" : "#DFFFFFFF"
-        border.width: 1
-        border.color: window.border
-        Row {
-            id: row
-            anchors.centerIn: parent
-            spacing: 7
-            Rectangle {
-                anchors.verticalCenter: parent.verticalCenter
-                width: 7
-                height: 7
-                radius: 4
-                color: chip.dotColor
-            }
-            Text {
-                anchors.verticalCenter: parent.verticalCenter
-                text: chip.label
-                color: window.secondary
-                font.family: "Segoe UI Variable Text"
-                font.pixelSize: 10
-            }
-        }
-        HoverHandler { id: statusHover }
-        CenteredTip {
-            visible: statusHover.hovered && chip.toolTip.length > 0
-            text: chip.toolTip
-            x: Math.round((chip.width - width) / 2)
-            y: chip.height + 5
+            border.color: theme.borderStrong
         }
     }
 
     component SectionLabel: Text {
-        color: window.muted
-        font.family: "Segoe UI Variable Text"
+        color: theme.textMuted
+        font.family: theme.fontFamily
         font.pixelSize: 10
         font.weight: Font.DemiBold
-        font.letterSpacing: 0.8
-    }
-
-    component RotoSlider: Slider {
-        id: slider
-        implicitHeight: 24
-        background: Rectangle {
-            x: slider.leftPadding
-            y: slider.topPadding + slider.availableHeight / 2 - height / 2
-            width: slider.availableWidth
-            height: 4
-            radius: 2
-            color: window.dark ? "#515151" : "#D2D2D2"
-            Rectangle {
-                width: slider.visualPosition * parent.width
-                height: parent.height
-                radius: 2
-                color: window.accent
-            }
-        }
-        handle: Rectangle {
-            x: slider.leftPadding + slider.visualPosition * (slider.availableWidth - width)
-            y: slider.topPadding + slider.availableHeight / 2 - height / 2
-            implicitWidth: 16
-            implicitHeight: 16
-            radius: 8
-            color: slider.pressed ? window.accent : window.panel2
-            border.width: 2
-            border.color: window.accent
-        }
+        font.letterSpacing: 0.7
     }
 
     component SubjectMarker: Item {
@@ -230,9 +93,9 @@ ApplicationWindow {
             height: marker.positive ? 18 : 16
             radius: marker.positive ? 9 : 4
             rotation: marker.positive ? 0 : 45
-            color: "#800D0D0D"
+            color: "#94080A0D"
             border.width: 2
-            border.color: marker.positive ? window.accent : window.danger
+            border.color: marker.positive ? theme.accent : theme.danger
         }
         Rectangle {
             anchors.centerIn: parent
@@ -240,101 +103,130 @@ ApplicationWindow {
             height: marker.positive ? 6 : 5
             radius: marker.positive ? 3 : 1
             rotation: marker.positive ? 0 : 45
-            color: marker.positive ? window.accent : window.danger
+            color: marker.positive ? theme.accent : theme.danger
         }
     }
 
     Rectangle {
         anchors.fill: parent
-        color: window.bg
+        color: theme.canvas
 
         ColumnLayout {
             anchors.fill: parent
-            anchors.margins: 10
-            spacing: 8
+            anchors.margins: theme.spaceMd
+            spacing: theme.spaceSm
 
-            Panel {
+            GlassPanel {
                 Layout.fillWidth: true
-                Layout.preferredHeight: 52
+                Layout.preferredHeight: 58
+                theme: window.uiTheme
+                elevated: true
+                strong: true
 
-                RowLayout {
+                Item {
                     anchors.fill: parent
-                    anchors.leftMargin: 12
-                    anchors.rightMargin: 8
-                    spacing: 8
+                    anchors.leftMargin: theme.spaceMd
+                    anchors.rightMargin: theme.spaceSm
 
-                    Image {
-                        Layout.preferredWidth: 27
-                        Layout.preferredHeight: 27
-                        source: "openroto.svg"
-                        fillMode: Image.PreserveAspectFit
-                    }
-                    ColumnLayout {
-                        spacing: -2
-                        Text {
-                            text: "OpenRoto"
-                            color: window.text
-                            font.family: "Segoe UI Variable Display"
-                            font.pixelSize: 15
-                            font.weight: Font.DemiBold
+                    Row {
+                        anchors.left: parent.left
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: theme.spaceSm
+                        Image {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 30
+                            height: 30
+                            source: "openroto.svg"
+                            fillMode: Image.PreserveAspectFit
                         }
-                        Text {
-                            text: window.appController.clipName + "  ·  " + window.appController.clipMeta
-                            color: window.secondary
-                            font.family: "Segoe UI Variable Text"
-                            font.pixelSize: 10
-                            elide: Text.ElideRight
-                            Layout.maximumWidth: 430
+                        Column {
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: -1
+                            Text {
+                                text: "OpenRoto"
+                                color: theme.text
+                                font.family: theme.displayFontFamily
+                                font.pixelSize: 16
+                                font.weight: Font.DemiBold
+                            }
+                            Text {
+                                width: Math.min(390, implicitWidth)
+                                text: window.appController.clipName + "  ·  " + window.appController.clipMeta
+                                color: theme.textSecondary
+                                font.family: theme.fontFamily
+                                font.pixelSize: 10
+                                elide: Text.ElideRight
+                            }
                         }
                     }
 
-                    Item { Layout.fillWidth: true }
-
-                    ToolButtonFluent {
-                        text: "↶"
-                        toolTip: "Undo · Ctrl+Z"
-                        enabled: window.appController.canUndo && !window.blocked
-                        opacity: enabled ? 1 : 0.35
-                        onClicked: window.appController.undo()
-                    }
-                    ToolButtonFluent {
-                        text: "↷"
-                        toolTip: "Redo · Ctrl+Y"
-                        enabled: window.appController.canRedo && !window.blocked
-                        opacity: enabled ? 1 : 0.35
-                        onClicked: window.appController.redo()
-                    }
-                    ToolButtonFluent {
-                        text: "⌫"
-                        toolTip: "Clear selection points on this frame"
-                        enabled: !window.blocked
-                        opacity: enabled ? 1 : 0.35
-                        onClicked: window.appController.clearFrame()
+                    Loader {
+                        anchors.centerIn: parent
+                        sourceComponent: window.workflowSwitcherComponent
+                        visible: sourceComponent !== null
                     }
 
-                    Rectangle {
-                        Layout.preferredWidth: 1
-                        Layout.preferredHeight: 22
-                        color: window.strongBorder
-                        Layout.leftMargin: 3
-                        Layout.rightMargin: 3
-                    }
-
-                    StatusChip {
-                        label: window.appController.bridgeConnected ? "Resolve linked" : "Resolve offline"
-                        dotColor: window.appController.bridgeConnected ? window.success : window.danger
-                    }
-                    StatusChip {
-                        label: window.appController.computeBadge
-                        dotColor: window.appController.computeDevice.indexOf("CUDA") >= 0 ? window.success : window.warning
-                        toolTip: window.appController.computeDevice + "\n" + window.appController.computeDetail
-                    }
-                    ToolButtonFluent {
-                        text: "⚙"
-                        toolTip: "Settings · Ctrl+,"
-                        onClicked: {
-                            window.modelManager.refresh()
-                            settingsPopup.open()
+                    Row {
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: theme.spaceXs
+                        RotoButton {
+                            theme: window.uiTheme
+                            width: 34; height: 34; leftPadding: 0; rightPadding: 0
+                            quiet: true
+                            text: "↶"
+                            font.family: "Segoe UI Symbol"; font.pixelSize: 15
+                            toolTip: "Undo · Ctrl+Z"
+                            enabled: window.appController.canUndo && !window.blocked
+                            onClicked: window.appController.undo()
+                        }
+                        RotoButton {
+                            theme: window.uiTheme
+                            width: 34; height: 34; leftPadding: 0; rightPadding: 0
+                            quiet: true
+                            text: "↷"
+                            font.family: "Segoe UI Symbol"; font.pixelSize: 15
+                            toolTip: "Redo · Ctrl+Y"
+                            enabled: window.appController.canRedo && !window.blocked
+                            onClicked: window.appController.redo()
+                        }
+                        RotoButton {
+                            theme: window.uiTheme
+                            width: 34; height: 34; leftPadding: 0; rightPadding: 0
+                            quiet: true
+                            text: "⌫"
+                            font.family: "Segoe UI Symbol"; font.pixelSize: 14
+                            toolTip: "Clear selection points on this frame"
+                            enabled: !window.blocked
+                            onClicked: window.appController.clearFrame()
+                        }
+                        Rectangle {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 1; height: 22
+                            color: theme.borderStrong
+                        }
+                        StatusPill {
+                            theme: window.uiTheme
+                            label: window.appController.bridgeConnected ? "Resolve linked" : "Resolve offline"
+                            dotColor: window.appController.bridgeConnected ? theme.success : theme.danger
+                            toolTip: window.appController.bridgeConnected
+                                ? "OpenRoto is connected to this Resolve session."
+                                : "Start a new OpenRoto session from DaVinci Resolve."
+                        }
+                        StatusPill {
+                            theme: window.uiTheme
+                            label: window.appController.computeBadge
+                            dotColor: window.appController.computeDevice.indexOf("CUDA") >= 0 ? theme.success : theme.warning
+                            toolTip: window.appController.computeDevice + "\n" + window.appController.computeDetail
+                        }
+                        RotoButton {
+                            theme: window.uiTheme
+                            width: 34; height: 34; leftPadding: 0; rightPadding: 0
+                            quiet: true
+                            text: "⚙"
+                            font.family: "Segoe UI Symbol"; font.pixelSize: 15
+                            toolTip: "Settings · Ctrl+,"
+                            onClicked: window.settingsRequested()
                         }
                     }
                 }
@@ -343,46 +235,52 @@ ApplicationWindow {
             RowLayout {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                spacing: 8
+                spacing: theme.spaceSm
 
-                Panel {
+                GlassPanel {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    Layout.minimumWidth: 650
+                    Layout.minimumWidth: 700
+                    theme: window.uiTheme
 
                     ColumnLayout {
                         anchors.fill: parent
-                        anchors.margins: 8
-                        spacing: 7
+                        anchors.margins: theme.spaceSm
+                        spacing: theme.spaceSm
 
                         RowLayout {
                             Layout.fillWidth: true
-                            Layout.preferredHeight: 28
+                            Layout.preferredHeight: 30
+                            spacing: theme.spaceSm
                             Text {
-                                text: "Viewer"
-                                color: window.text
-                                font.family: "Segoe UI Variable Text"
+                                text: window.viewerTitle
+                                color: theme.text
+                                font.family: theme.fontFamily
                                 font.pixelSize: 12
                                 font.weight: Font.DemiBold
                             }
-                            StatusChip {
+                            StatusPill {
+                                theme: window.uiTheme
                                 label: window.appController.promptCount === 0
                                     ? "No selection"
                                     : window.appController.promptCount + (window.appController.promptCount === 1 ? " point" : " points")
-                                dotColor: window.appController.promptCount > 0 ? window.accent : window.muted
+                                dotColor: window.appController.promptCount > 0 ? theme.accent : theme.textMuted
+                                toolTip: "Left click adds Subject points. Right click adds Exclude points."
                             }
                             Item { Layout.fillWidth: true }
                             Text {
                                 text: Math.round(imageStack.zoom * 100) + "%"
-                                color: window.secondary
-                                font.family: "Segoe UI Variable Text"
+                                color: theme.textSecondary
+                                font.family: theme.monoFontFamily
                                 font.pixelSize: 10
                             }
-                            ToolButtonFluent {
+                            RotoButton {
+                                theme: window.uiTheme
+                                implicitWidth: 46
+                                implicitHeight: 32
                                 text: "1:1"
-                                font.pixelSize: 10
-                                implicitWidth: 42
-                                toolTip: "Reset zoom"
+                                quiet: true
+                                toolTip: "Reset viewer zoom and position"
                                 onClicked: window.resetViewer()
                             }
                         }
@@ -391,25 +289,27 @@ ApplicationWindow {
                             id: viewport
                             Layout.fillWidth: true
                             Layout.fillHeight: true
-                            radius: 6
-                            color: window.viewerBg
+                            radius: theme.radiusMd
+                            color: theme.viewer
                             clip: true
+                            border.width: 1
+                            border.color: theme.border
 
                             Item {
                                 id: imageStack
                                 width: parent.width
                                 height: parent.height
                                 property real zoom: 1
-                                x: 0
-                                y: 0
-                                scale: zoom
+                                x: 0; y: 0; scale: zoom
                                 transformOrigin: Item.Center
-                                Behavior on scale { NumberAnimation { duration: window.anim; easing.type: Easing.OutCubic } }
+                                Behavior on scale {
+                                    NumberAnimation { duration: window.motionDuration; easing.type: Easing.OutCubic }
+                                }
 
                                 Image {
                                     id: frameImage
                                     anchors.fill: parent
-                                    source: window.appController.currentFrameUrl
+                                    source: window.viewerFrameSource
                                     fillMode: Image.PreserveAspectFit
                                     asynchronous: true
                                     cache: true
@@ -433,32 +333,26 @@ ApplicationWindow {
                                     MultiEffect {
                                         anchors.fill: maskImage
                                         source: maskImage
-                                        visible: maskImage.status === Image.Ready
+                                        visible: window.maskOverlayEnabled && maskImage.status === Image.Ready
                                         opacity: window.appController.overlayOpacity
                                         colorization: 1
-                                        colorizationColor: window.accent
+                                        colorizationColor: theme.accent
                                     }
-
                                     Repeater {
-                                        model: window.appController.points
+                                        model: window.selectionPointsVisible ? window.appController.points : []
                                         delegate: Item {
                                             id: pointItem
                                             required property var modelData
                                             x: pointItem.modelData.x * paintedArea.width - 11
                                             y: pointItem.modelData.y * paintedArea.height - 11
-                                            width: 22
-                                            height: 22
-                                            SubjectMarker {
-                                                anchors.fill: parent
-                                                positive: pointItem.modelData.positive
-                                            }
+                                            width: 22; height: 22
+                                            SubjectMarker { anchors.fill: parent; positive: pointItem.modelData.positive }
                                         }
                                     }
-
                                     MouseArea {
                                         anchors.fill: parent
                                         acceptedButtons: Qt.LeftButton | Qt.RightButton
-                                        enabled: !window.blocked
+                                        enabled: window.selectionEnabled && !window.blocked
                                         cursorShape: Qt.CrossCursor
                                         onClicked: mouse => window.appController.addPoint(
                                             Math.max(0, Math.min(1, mouse.x / width)),
@@ -485,121 +379,132 @@ ApplicationWindow {
                                 }
                             }
 
-                            Rectangle {
+                            GlassPanel {
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 anchors.bottom: parent.bottom
-                                anchors.bottomMargin: 10
-                                width: hintRow.implicitWidth + 20
-                                height: 30
-                                radius: 7
-                                color: "#C5222222"
-                                border.width: 1
-                                border.color: "#3AFFFFFF"
+                                anchors.bottomMargin: theme.spaceMd
+                                width: hintRow.implicitWidth + 24
+                                height: 32
+                                radius: 16
+                                theme: window.uiTheme
+                                strong: true
+                                visible: !window.appController.busy
                                 Row {
                                     id: hintRow
                                     anchors.centerIn: parent
-                                    spacing: 16
+                                    spacing: theme.spaceLg
                                     Row {
-                                        spacing: 6
+                                        spacing: theme.spaceXs
                                         SubjectMarker { width: 16; height: 16; positive: true; anchors.verticalCenter: parent.verticalCenter }
-                                        Text { text: "Subject · Left click"; color: "#E8FFFFFF"; font.family: "Segoe UI Variable Text"; font.pixelSize: 10; anchors.verticalCenter: parent.verticalCenter }
+                                        Text { text: "Subject · Left click"; color: theme.text; font.family: theme.fontFamily; font.pixelSize: 10; anchors.verticalCenter: parent.verticalCenter }
                                     }
                                     Row {
-                                        spacing: 6
+                                        spacing: theme.spaceXs
                                         SubjectMarker { width: 16; height: 16; positive: false; anchors.verticalCenter: parent.verticalCenter }
-                                        Text { text: "Exclude · Right click"; color: "#E8FFFFFF"; font.family: "Segoe UI Variable Text"; font.pixelSize: 10; anchors.verticalCenter: parent.verticalCenter }
+                                        Text { text: "Exclude · Right click"; color: theme.text; font.family: theme.fontFamily; font.pixelSize: 10; anchors.verticalCenter: parent.verticalCenter }
                                     }
-                                    Text { text: "Wheel zoom · Middle drag pan"; color: "#BFFFFFFF"; font.family: "Segoe UI Variable Text"; font.pixelSize: 10; anchors.verticalCenter: parent.verticalCenter }
+                                    Text { text: "Wheel zoom · Middle drag"; color: theme.textSecondary; font.family: theme.fontFamily; font.pixelSize: 10; anchors.verticalCenter: parent.verticalCenter }
                                 }
                             }
 
-                            Rectangle {
-                                anchors.centerIn: parent
-                                width: 270
-                                height: busyColumn.implicitHeight + 30
-                                radius: 9
+                            MultiEffect {
+                                anchors.fill: imageStack
+                                source: imageStack
                                 visible: window.appController.busy
-                                color: "#EE292929"
-                                border.width: 1
-                                border.color: "#4FFFFFFF"
-
+                                blurEnabled: true
+                                blur: 0.78
+                                blurMax: 48
+                                opacity: 0.96
+                            }
+                            Rectangle { anchors.fill: parent; visible: window.appController.busy; color: theme.scrim }
+                            GlassPanel {
+                                anchors.centerIn: parent
+                                width: Math.min(390, parent.width - 48)
+                                height: busyColumn.implicitHeight + 32
+                                visible: window.appController.busy
+                                theme: window.uiTheme
+                                strong: true
+                                elevated: true
                                 Column {
                                     id: busyColumn
                                     anchors.left: parent.left
                                     anchors.right: parent.right
                                     anchors.verticalCenter: parent.verticalCenter
-                                    anchors.leftMargin: 16
-                                    anchors.rightMargin: 16
-                                    spacing: 7
-                                    BusyIndicator {
-                                        width: 22
-                                        height: 22
-                                        running: parent.parent.visible
-                                        anchors.horizontalCenter: parent.horizontalCenter
-                                    }
+                                    anchors.leftMargin: theme.spaceLg
+                                    anchors.rightMargin: theme.spaceLg
+                                    spacing: theme.spaceSm
+                                    BusyIndicator { width: 24; height: 24; running: parent.parent.visible; anchors.horizontalCenter: parent.horizontalCenter }
                                     Text {
                                         width: parent.width
                                         text: window.appController.status
-                                        color: "white"
-                                        font.family: "Segoe UI Variable Text"
+                                        color: theme.text
+                                        font.family: theme.fontFamily
                                         font.pixelSize: 12
                                         font.weight: Font.DemiBold
                                         horizontalAlignment: Text.AlignHCenter
-                                        verticalAlignment: Text.AlignVCenter
                                         wrapMode: Text.WordWrap
                                     }
-                                    ProgressBar {
+                                    Text {
                                         width: parent.width
-                                        from: 0
-                                        to: 1
-                                        value: window.appController.progress
+                                        visible: text.length > 0
+                                        text: window.appController.detail
+                                        color: theme.textSecondary
+                                        font.family: theme.fontFamily
+                                        font.pixelSize: 10
+                                        horizontalAlignment: Text.AlignHCenter
+                                        wrapMode: Text.WordWrap
                                     }
+                                    ProgressBar { width: parent.width; from: 0; to: 1; value: window.appController.progress }
                                 }
                             }
                         }
 
-                        Rectangle {
+                        GlassPanel {
                             Layout.fillWidth: true
                             Layout.preferredHeight: 58
-                            radius: 6
-                            color: window.dark ? "#242424" : "#FAFAFA"
-                            border.width: 1
-                            border.color: window.border
+                            theme: window.uiTheme
+                            strong: true
                             RowLayout {
                                 anchors.fill: parent
-                                anchors.leftMargin: 10
-                                anchors.rightMargin: 10
-                                spacing: 8
-                                ToolButtonFluent {
-                                    text: "‹"
+                                anchors.leftMargin: theme.spaceSm
+                                anchors.rightMargin: theme.spaceSm
+                                spacing: theme.spaceSm
+                                RotoButton {
+                                    theme: window.uiTheme
+                                    width: 34; height: 34; leftPadding: 0; rightPadding: 0
+                                    quiet: true
+                                    text: "‹"; font.pixelSize: 18
                                     toolTip: "Previous frame"
                                     enabled: !window.blocked && window.appController.currentFrame > 0
-                                    opacity: enabled ? 1 : 0.35
                                     onClicked: window.appController.setFrame(window.appController.currentFrame - 1)
                                 }
                                 Text {
+                                    Layout.preferredWidth: 88
                                     text: window.appController.frameLabel
-                                    color: window.secondary
-                                    font.family: "Segoe UI Variable Text"
+                                    color: theme.textSecondary
+                                    font.family: theme.monoFontFamily
                                     font.pixelSize: 10
-                                    Layout.preferredWidth: 76
                                     horizontalAlignment: Text.AlignHCenter
                                     verticalAlignment: Text.AlignVCenter
                                 }
                                 RotoSlider {
                                     Layout.fillWidth: true
+                                    theme: window.uiTheme
                                     from: 0
                                     to: Math.max(0, window.appController.frameCount - 1)
                                     stepSize: 1
                                     value: window.appController.currentFrame
                                     enabled: !window.blocked
+                                    toolTip: window.appController.frameLabel
                                     onMoved: window.appController.setFrame(Math.round(value))
                                 }
-                                ToolButtonFluent {
-                                    text: "›"
+                                RotoButton {
+                                    theme: window.uiTheme
+                                    width: 34; height: 34; leftPadding: 0; rightPadding: 0
+                                    quiet: true
+                                    text: "›"; font.pixelSize: 18
                                     toolTip: "Next frame"
                                     enabled: !window.blocked && window.appController.currentFrame < window.appController.frameCount - 1
-                                    opacity: enabled ? 1 : 0.35
                                     onClicked: window.appController.setFrame(window.appController.currentFrame + 1)
                                 }
                             }
@@ -607,282 +512,262 @@ ApplicationWindow {
                     }
                 }
 
-                Panel {
-                    Layout.preferredWidth: 310
-                    Layout.minimumWidth: 310
-                    Layout.maximumWidth: 310
+                Loader {
+                    Layout.preferredWidth: window.sidePanelWidth
+                    Layout.minimumWidth: window.sidePanelWidth
+                    Layout.maximumWidth: window.sidePanelWidth
                     Layout.fillHeight: true
+                    sourceComponent: window.customSidePanelComponent !== null ? window.customSidePanelComponent : rotoscopeControlsComponent
+                }
+            }
+        }
+    }
 
+    Component {
+        id: rotoscopeControlsComponent
+        GlassPanel {
+            theme: window.uiTheme
+            ColumnLayout {
+                anchors.fill: parent
+                spacing: 0
+                RowLayout {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 48
+                    Layout.leftMargin: theme.spaceLg
+                    Layout.rightMargin: theme.spaceMd
+                    Text {
+                        Layout.fillWidth: true
+                        text: "Rotoscope"
+                        color: theme.text
+                        font.family: theme.displayFontFamily
+                        font.pixelSize: 15
+                        font.weight: Font.DemiBold
+                    }
+                    StatusPill {
+                        theme: window.uiTheme
+                        label: window.appController.trackingReady ? "Tracked" : window.appController.hasPrompts ? "Needs track" : "Select"
+                        dotColor: window.appController.trackingReady ? theme.success : window.appController.hasPrompts ? theme.accent : theme.textMuted
+                    }
+                }
+                Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: theme.border }
+                ScrollView {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    clip: true
+                    contentWidth: availableWidth
                     ColumnLayout {
-                        anchors.fill: parent
-                        spacing: 0
-
+                        width: parent.width
+                        spacing: theme.spaceSm
+                        Item { Layout.preferredHeight: theme.spaceXs }
+                        SectionLabel { text: "SELECTION"; Layout.leftMargin: theme.spaceLg }
+                        Text {
+                            Layout.fillWidth: true
+                            Layout.leftMargin: theme.spaceLg
+                            Layout.rightMargin: theme.spaceLg
+                            text: "Mark the subject with left click. Add Exclude points only where the mask includes unwanted background."
+                            color: theme.textSecondary
+                            font.family: theme.fontFamily
+                            font.pixelSize: 11
+                            wrapMode: Text.WordWrap
+                        }
                         RowLayout {
                             Layout.fillWidth: true
-                            Layout.preferredHeight: 44
-                            Layout.leftMargin: 14
-                            Layout.rightMargin: 10
-                            Text {
+                            Layout.leftMargin: theme.spaceLg
+                            Layout.rightMargin: theme.spaceLg
+                            spacing: theme.spaceMd
+                            Row {
                                 Layout.fillWidth: true
-                                text: "Controls"
-                                color: window.text
-                                font.family: "Segoe UI Variable Display"
-                                font.pixelSize: 15
-                                font.weight: Font.DemiBold
+                                spacing: theme.spaceXs
+                                SubjectMarker { width: 20; height: 20; positive: true; anchors.verticalCenter: parent.verticalCenter }
+                                Column {
+                                    Text { text: "Subject"; color: theme.text; font.family: theme.fontFamily; font.pixelSize: 11; font.weight: Font.DemiBold }
+                                    Text { text: "Left click"; color: theme.textMuted; font.family: theme.fontFamily; font.pixelSize: 9 }
+                                }
                             }
-                            Text {
-                                text: window.appController.trackingReady ? "Tracked" : window.appController.hasPrompts ? "Needs track" : "Select"
-                                color: window.appController.trackingReady ? window.success : window.appController.hasPrompts ? window.accent : window.muted
-                                font.family: "Segoe UI Variable Text"
-                                font.pixelSize: 10
-                                font.weight: Font.DemiBold
+                            Row {
+                                Layout.fillWidth: true
+                                spacing: theme.spaceXs
+                                SubjectMarker { width: 20; height: 20; positive: false; anchors.verticalCenter: parent.verticalCenter }
+                                Column {
+                                    Text { text: "Exclude"; color: theme.text; font.family: theme.fontFamily; font.pixelSize: 11; font.weight: Font.DemiBold }
+                                    Text { text: "Right click"; color: theme.textMuted; font.family: theme.fontFamily; font.pixelSize: 9 }
+                                }
                             }
                         }
-                        Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: window.border }
-
-                        ScrollView {
+                        Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: theme.border; Layout.topMargin: theme.spaceXs }
+                        RowLayout {
                             Layout.fillWidth: true
-                            Layout.fillHeight: true
-                            clip: true
-                            contentWidth: availableWidth
-
-                            ColumnLayout {
-                                width: parent.width
-                                spacing: 8
-                                Item { Layout.preferredHeight: 4 }
-
-                                SectionLabel { text: "SELECTION"; Layout.leftMargin: 14 }
-                                Text {
-                                    Layout.fillWidth: true
-                                    Layout.leftMargin: 14
-                                    Layout.rightMargin: 14
-                                    text: "Mark the subject, then exclude background only where the mask needs correction."
-                                    color: window.secondary
-                                    font.family: "Segoe UI Variable Text"
-                                    font.pixelSize: 11
-                                    wrapMode: Text.WordWrap
-                                }
-                                RowLayout {
-                                    Layout.fillWidth: true
-                                    Layout.leftMargin: 14
-                                    Layout.rightMargin: 14
-                                    spacing: 10
-                                    Row {
-                                        Layout.fillWidth: true
-                                        spacing: 7
-                                        SubjectMarker { width: 20; height: 20; positive: true; anchors.verticalCenter: parent.verticalCenter }
-                                        Column {
-                                            Text { text: "Subject"; color: window.text; font.family: "Segoe UI Variable Text"; font.pixelSize: 11; font.weight: Font.DemiBold }
-                                            Text { text: "Left click"; color: window.muted; font.family: "Segoe UI Variable Text"; font.pixelSize: 9 }
-                                        }
-                                    }
-                                    Row {
-                                        Layout.fillWidth: true
-                                        spacing: 7
-                                        SubjectMarker { width: 20; height: 20; positive: false; anchors.verticalCenter: parent.verticalCenter }
-                                        Column {
-                                            Text { text: "Exclude"; color: window.text; font.family: "Segoe UI Variable Text"; font.pixelSize: 11; font.weight: Font.DemiBold }
-                                            Text { text: "Right click"; color: window.muted; font.family: "Segoe UI Variable Text"; font.pixelSize: 9 }
-                                        }
-                                    }
-                                }
-
-                                Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: window.border; Layout.topMargin: 5 }
-
-                                RowLayout {
-                                    Layout.fillWidth: true
-                                    Layout.leftMargin: 14
-                                    Layout.rightMargin: 10
-                                    SectionLabel { text: "TRACKING"; Layout.fillWidth: true }
-                                    ToolButtonFluent {
-                                        text: "⚙"
-                                        implicitWidth: 30
-                                        implicitHeight: 30
-                                        toolTip: "Manage models"
-                                        onClicked: {
-                                            window.modelManager.refresh()
-                                            settingsPopup.open()
-                                        }
-                                    }
-                                }
-
-                                ComboBox {
-                                    id: modelBox
-                                    Layout.fillWidth: true
-                                    Layout.leftMargin: 14
-                                    Layout.rightMargin: 14
-                                    model: ["Fast", "Balanced", "High"]
-                                    currentIndex: window.appController.modelPreset === "fast" ? 0 : window.appController.modelPreset === "high" ? 2 : 1
-                                    enabled: !window.blocked
-                                    onActivated: index => window.appController.setModelPreset(index === 0 ? "fast" : index === 2 ? "high" : "balanced")
-                                    background: Rectangle {
-                                        radius: 6
-                                        color: window.panel2
-                                        border.width: 1
-                                        border.color: modelBox.visualFocus ? window.accent : window.strongBorder
-                                    }
-                                    contentItem: Text {
-                                        leftPadding: 10
-                                        text: modelBox.displayText
-                                        color: window.text
-                                        font.family: "Segoe UI Variable Text"
-                                        font.pixelSize: 11
-                                        verticalAlignment: Text.AlignVCenter
-                                    }
-                                }
-
-                                RowLayout {
-                                    Layout.fillWidth: true
-                                    Layout.leftMargin: 14
-                                    Layout.rightMargin: 14
-                                    spacing: 4
-                                    Repeater {
-                                        model: [
-                                            {"label": "Backward", "value": "backward"},
-                                            {"label": "Both", "value": "both"},
-                                            {"label": "Forward", "value": "forward"}
-                                        ]
-                                        delegate: FluentButton {
-                                            required property var modelData
-                                            Layout.fillWidth: true
-                                            text: modelData.label
-                                            selected: window.appController.trackingDirection === modelData.value
-                                            enabled: !window.blocked
-                                            onClicked: window.appController.setTrackingDirection(modelData.value)
-                                        }
-                                    }
-                                }
-
-                                FluentButton {
-                                    Layout.fillWidth: true
-                                    Layout.leftMargin: 14
-                                    Layout.rightMargin: 14
-                                    primary: window.appController.hasPrompts
-                                    text: window.appController.trackingReady ? "Track again" : "Track selection"
-                                    enabled: window.appController.hasPrompts && !window.blocked
-                                    opacity: enabled ? 1 : 0.45
-                                    onClicked: window.appController.track()
-                                }
-
-                                Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: window.border; Layout.topMargin: 5 }
-
-                                SectionLabel { text: "MATTE"; Layout.leftMargin: 14 }
-                                RowLayout {
-                                    Layout.fillWidth: true
-                                    Layout.leftMargin: 14
-                                    Layout.rightMargin: 14
-                                    Text { text: "Overlay"; color: window.text; font.family: "Segoe UI Variable Text"; font.pixelSize: 11; Layout.fillWidth: true }
-                                    Text { text: Math.round(window.appController.overlayOpacity * 100) + "%"; color: window.secondary; font.family: "Segoe UI Variable Text"; font.pixelSize: 10 }
-                                }
-                                RotoSlider {
-                                    Layout.fillWidth: true
-                                    Layout.leftMargin: 14
-                                    Layout.rightMargin: 14
-                                    from: 0; to: 1
-                                    value: window.appController.overlayOpacity
-                                    enabled: !window.blocked
-                                    onMoved: window.appController.setOverlayOpacity(value)
-                                }
-                                RowLayout {
-                                    Layout.fillWidth: true
-                                    Layout.leftMargin: 14
-                                    Layout.rightMargin: 14
-                                    Text { text: "Expand / Contract"; color: window.text; font.family: "Segoe UI Variable Text"; font.pixelSize: 11; Layout.fillWidth: true }
-                                    Text { text: (window.appController.expandContract > 0 ? "+" : "") + window.appController.expandContract + " px"; color: window.secondary; font.family: "Segoe UI Variable Text"; font.pixelSize: 10 }
-                                }
-                                RotoSlider {
-                                    Layout.fillWidth: true
-                                    Layout.leftMargin: 14
-                                    Layout.rightMargin: 14
-                                    from: -16; to: 16; stepSize: 1
-                                    value: window.appController.expandContract
-                                    enabled: !window.blocked
-                                    onMoved: window.appController.setExpandContract(Math.round(value))
-                                }
-                                RowLayout {
-                                    Layout.fillWidth: true
-                                    Layout.leftMargin: 14
-                                    Layout.rightMargin: 14
-                                    Text { text: "Feather"; color: window.text; font.family: "Segoe UI Variable Text"; font.pixelSize: 11; Layout.fillWidth: true }
-                                    Text { text: window.appController.feather.toFixed(1) + " px"; color: window.secondary; font.family: "Segoe UI Variable Text"; font.pixelSize: 10 }
-                                }
-                                RotoSlider {
-                                    Layout.fillWidth: true
-                                    Layout.leftMargin: 14
-                                    Layout.rightMargin: 14
-                                    from: 0; to: 24; stepSize: 0.5
-                                    value: window.appController.feather
-                                    enabled: !window.blocked
-                                    onMoved: window.appController.setFeather(value)
-                                }
-                                Switch {
-                                    id: invertSwitch
-                                    Layout.leftMargin: 14
-                                    text: "Invert matte"
-                                    checked: window.appController.invert
-                                    enabled: !window.blocked
-                                    onToggled: window.appController.setInvert(checked)
-                                    contentItem: Text {
-                                        text: invertSwitch.text
-                                        color: window.text
-                                        font.family: "Segoe UI Variable Text"
-                                        font.pixelSize: 11
-                                        leftPadding: invertSwitch.indicator.width + invertSwitch.spacing
-                                        verticalAlignment: Text.AlignVCenter
-                                    }
-                                }
-                                Item { Layout.preferredHeight: 5 }
+                            Layout.leftMargin: theme.spaceLg
+                            Layout.rightMargin: theme.spaceMd
+                            SectionLabel { text: "TRACKING"; Layout.fillWidth: true }
+                            RotoButton {
+                                theme: window.uiTheme
+                                width: 30; height: 30; leftPadding: 0; rightPadding: 0
+                                quiet: true
+                                text: "ⓘ"; font.pixelSize: 13
+                                toolTip: "Choose the SAM 2.1 model and tracking direction. Balanced is the default for most clips."
                             }
                         }
-
-                        Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: window.border }
-                        ColumnLayout {
+                        RotoComboBox {
                             Layout.fillWidth: true
-                            Layout.leftMargin: 12
-                            Layout.rightMargin: 12
-                            Layout.topMargin: 9
-                            Layout.bottomMargin: 11
-                            spacing: 6
-                            Text {
-                                Layout.fillWidth: true
-                                text: window.appController.status
-                                color: window.text
-                                font.family: "Segoe UI Variable Text"
-                                font.pixelSize: 11
-                                font.weight: Font.DemiBold
-                                horizontalAlignment: Text.AlignHCenter
-                                elide: Text.ElideRight
-                            }
-                            Text {
-                                Layout.fillWidth: true
-                                visible: text.length > 0 && !window.appController.busy
-                                text: window.appController.detail
-                                color: window.secondary
-                                font.family: "Segoe UI Variable Text"
-                                font.pixelSize: 9
-                                horizontalAlignment: Text.AlignHCenter
-                                wrapMode: Text.WordWrap
-                            }
-                            RowLayout {
-                                Layout.fillWidth: true
-                                spacing: 6
-                                FluentButton {
-                                    text: "Cancel"
-                                    visible: window.appController.busy
-                                    onClicked: window.appController.cancel()
-                                }
-                                FluentButton {
+                            Layout.leftMargin: theme.spaceLg
+                            Layout.rightMargin: theme.spaceLg
+                            theme: window.uiTheme
+                            model: ["Fast", "Balanced", "High"]
+                            currentIndex: window.appController.modelPreset === "fast" ? 0 : window.appController.modelPreset === "high" ? 2 : 1
+                            enabled: !window.blocked
+                            onActivated: index => window.appController.setModelPreset(index === 0 ? "fast" : index === 2 ? "high" : "balanced")
+                        }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Layout.leftMargin: theme.spaceLg
+                            Layout.rightMargin: theme.spaceLg
+                            spacing: theme.spaceXs
+                            Repeater {
+                                model: [
+                                    {"label": "Backward", "value": "backward"},
+                                    {"label": "Both", "value": "both"},
+                                    {"label": "Forward", "value": "forward"}
+                                ]
+                                delegate: RotoButton {
+                                    required property var modelData
                                     Layout.fillWidth: true
-                                    implicitHeight: 40
-                                    primary: true
-                                    text: window.appController.trackingDirty ? "Track, Render & Apply" : "Render & Apply"
-                                    enabled: window.appController.hasPrompts && window.appController.bridgeConnected && !window.blocked
-                                    opacity: enabled ? 1 : 0.45
-                                    toolTip: !window.appController.bridgeConnected ? "Start a new session from DaVinci Resolve" : ""
-                                    onClicked: window.appController.renderAndApply()
+                                    theme: window.uiTheme
+                                    text: modelData.label
+                                    selected: window.appController.trackingDirection === modelData.value
+                                    quiet: !selected
+                                    enabled: !window.blocked
+                                    onClicked: window.appController.setTrackingDirection(modelData.value)
                                 }
                             }
                         }
+                        RotoButton {
+                            Layout.fillWidth: true
+                            Layout.leftMargin: theme.spaceLg
+                            Layout.rightMargin: theme.spaceLg
+                            theme: window.uiTheme
+                            primary: window.appController.hasPrompts
+                            text: window.appController.trackingReady ? "Track again" : "Track selection"
+                            enabled: window.appController.hasPrompts && !window.blocked
+                            toolTip: window.appController.hasPrompts ? "Track the selected subject through the chosen direction." : "Add at least one Subject point first."
+                            onClicked: window.appController.track()
+                        }
+                        Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: theme.border; Layout.topMargin: theme.spaceXs }
+                        SectionLabel { text: "MATTE"; Layout.leftMargin: theme.spaceLg }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Layout.leftMargin: theme.spaceLg
+                            Layout.rightMargin: theme.spaceLg
+                            Text { text: "Overlay"; color: theme.text; font.family: theme.fontFamily; font.pixelSize: 11; Layout.fillWidth: true }
+                            Text { text: Math.round(window.appController.overlayOpacity * 100) + "%"; color: theme.textSecondary; font.family: theme.monoFontFamily; font.pixelSize: 10 }
+                        }
+                        RotoSlider {
+                            Layout.fillWidth: true
+                            Layout.leftMargin: theme.spaceLg
+                            Layout.rightMargin: theme.spaceLg
+                            theme: window.uiTheme
+                            from: 0; to: 1
+                            value: window.appController.overlayOpacity
+                            enabled: !window.blocked
+                            toolTip: Math.round(value * 100) + "% overlay"
+                            onMoved: window.appController.setOverlayOpacity(value)
+                        }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Layout.leftMargin: theme.spaceLg
+                            Layout.rightMargin: theme.spaceLg
+                            Text { text: "Expand / Contract"; color: theme.text; font.family: theme.fontFamily; font.pixelSize: 11; Layout.fillWidth: true }
+                            Text { text: (window.appController.expandContract > 0 ? "+" : "") + window.appController.expandContract + " px"; color: theme.textSecondary; font.family: theme.monoFontFamily; font.pixelSize: 10 }
+                        }
+                        RotoSlider {
+                            Layout.fillWidth: true
+                            Layout.leftMargin: theme.spaceLg
+                            Layout.rightMargin: theme.spaceLg
+                            theme: window.uiTheme
+                            from: -16; to: 16; stepSize: 1
+                            value: window.appController.expandContract
+                            enabled: !window.blocked
+                            toolTip: Math.round(value) + " px"
+                            onMoved: window.appController.setExpandContract(Math.round(value))
+                        }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Layout.leftMargin: theme.spaceLg
+                            Layout.rightMargin: theme.spaceLg
+                            Text { text: "Feather"; color: theme.text; font.family: theme.fontFamily; font.pixelSize: 11; Layout.fillWidth: true }
+                            Text { text: window.appController.feather.toFixed(1) + " px"; color: theme.textSecondary; font.family: theme.monoFontFamily; font.pixelSize: 10 }
+                        }
+                        RotoSlider {
+                            Layout.fillWidth: true
+                            Layout.leftMargin: theme.spaceLg
+                            Layout.rightMargin: theme.spaceLg
+                            theme: window.uiTheme
+                            from: 0; to: 24; stepSize: 0.5
+                            value: window.appController.feather
+                            enabled: !window.blocked
+                            toolTip: value.toFixed(1) + " px"
+                            onMoved: window.appController.setFeather(value)
+                        }
+                        RotoSwitch {
+                            Layout.leftMargin: theme.spaceLg
+                            theme: window.uiTheme
+                            text: "Invert matte"
+                            checked: window.appController.invert
+                            enabled: !window.blocked
+                            onToggled: window.appController.setInvert(checked)
+                        }
+                        Item { Layout.preferredHeight: theme.spaceSm }
+                    }
+                }
+                Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: theme.border }
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    Layout.leftMargin: theme.spaceMd
+                    Layout.rightMargin: theme.spaceMd
+                    Layout.topMargin: theme.spaceSm
+                    Layout.bottomMargin: theme.spaceMd
+                    spacing: theme.spaceXs
+                    Text {
+                        Layout.fillWidth: true
+                        text: window.appController.status
+                        color: theme.text
+                        font.family: theme.fontFamily
+                        font.pixelSize: 11
+                        font.weight: Font.DemiBold
+                        horizontalAlignment: Text.AlignHCenter
+                        elide: Text.ElideRight
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        visible: text.length > 0 && !window.appController.busy
+                        text: window.appController.detail
+                        color: theme.textSecondary
+                        font.family: theme.fontFamily
+                        font.pixelSize: 9
+                        horizontalAlignment: Text.AlignHCenter
+                        wrapMode: Text.WordWrap
+                    }
+                    RotoButton {
+                        Layout.fillWidth: true
+                        theme: window.uiTheme
+                        visible: window.appController.busy
+                        dangerStyle: window.appController.status !== "Waiting for Resolve"
+                        text: window.appController.status === "Waiting for Resolve" ? "Resolve is applying…" : "Cancel operation"
+                        enabled: window.appController.status !== "Waiting for Resolve"
+                        onClicked: window.appController.cancel()
+                    }
+                    RotoButton {
+                        Layout.fillWidth: true
+                        implicitHeight: 40
+                        theme: window.uiTheme
+                        primary: true
+                        visible: !window.appController.busy
+                        text: window.appController.trackingDirty ? "Track, Render & Apply" : "Render & Apply"
+                        enabled: window.appController.hasPrompts && window.appController.bridgeConnected && !window.blocked
+                        toolTip: !window.appController.bridgeConnected
+                            ? "Start a new session from DaVinci Resolve."
+                            : !window.appController.hasPrompts ? "Add at least one Subject point first." : "Render the matte and apply it in Resolve."
+                        onClicked: window.appController.renderAndApply()
                     }
                 }
             }
@@ -890,188 +775,84 @@ ApplicationWindow {
     }
 
     Popup {
-        id: settingsPopup
+        id: closeGuard
         anchors.centerIn: parent
-        width: Math.min(window.width - 80, 720)
-        height: Math.min(window.height - 80, 570)
+        width: Math.min(500, window.width - 48)
+        implicitHeight: closeContent.implicitHeight + theme.spaceXl * 2
         modal: true
         focus: true
         padding: 0
-        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-
-        background: Rectangle {
-            radius: 10
-            color: window.panel
-            border.width: 1
-            border.color: window.strongBorder
-        }
-
-        ColumnLayout {
+        closePolicy: Popup.CloseOnEscape
+        background: GlassPanel { theme: window.uiTheme; elevated: true; strong: true }
+        contentItem: ColumnLayout {
+            id: closeContent
             anchors.fill: parent
-            spacing: 0
-
+            anchors.margins: theme.spaceXl
+            spacing: theme.spaceMd
             RowLayout {
                 Layout.fillWidth: true
-                Layout.preferredHeight: 54
-                Layout.leftMargin: 18
-                Layout.rightMargin: 10
-                Text {
-                    Layout.fillWidth: true
-                    text: "Settings"
-                    color: window.text
-                    font.family: "Segoe UI Variable Display"
-                    font.pixelSize: 18
-                    font.weight: Font.DemiBold
+                spacing: theme.spaceMd
+                Rectangle {
+                    Layout.preferredWidth: 36; Layout.preferredHeight: 36
+                    radius: 18
+                    color: window.appController.status === "Waiting for Resolve" ? theme.warningSoft : theme.dangerSoft
+                    Text {
+                        anchors.centerIn: parent
+                        text: "!"
+                        color: window.appController.status === "Waiting for Resolve" ? theme.warning : theme.danger
+                        font.family: theme.displayFontFamily
+                        font.pixelSize: 18
+                        font.weight: Font.Bold
+                    }
                 }
-                ToolButtonFluent {
-                    text: "×"
-                    toolTip: "Close settings"
-                    onClicked: settingsPopup.close()
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 2
+                    Text {
+                        Layout.fillWidth: true
+                        text: window.appController.status === "Waiting for Resolve"
+                            ? "Resolve is still applying the result"
+                            : "An operation is still running"
+                        color: theme.text
+                        font.family: theme.displayFontFamily
+                        font.pixelSize: 17
+                        font.weight: Font.DemiBold
+                        wrapMode: Text.WordWrap
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        text: window.appController.status
+                        color: theme.textMuted
+                        font.family: theme.fontFamily
+                        font.pixelSize: 10
+                        elide: Text.ElideRight
+                    }
                 }
             }
-            Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: window.border }
-
-            ScrollView {
+            Text {
                 Layout.fillWidth: true
-                Layout.fillHeight: true
-                clip: true
-                contentWidth: availableWidth
-                ColumnLayout {
-                    width: parent.width
-                    spacing: 10
-                    Item { Layout.preferredHeight: 4 }
-                    Text {
-                        Layout.leftMargin: 18
-                        text: "SAM 2.1 models"
-                        color: window.text
-                        font.family: "Segoe UI Variable Display"
-                        font.pixelSize: 15
-                        font.weight: Font.DemiBold
+                text: window.appController.status === "Waiting for Resolve"
+                    ? "OpenRoto keeps this session open until DaVinci Resolve confirms that the matte was applied. Closing is delayed to avoid an incomplete handoff."
+                    : "Closing now cancels the current tracking or render operation. Partial output is not applied to Resolve; OpenRoto closes as soon as cancellation finishes."
+                color: theme.textSecondary
+                font.family: theme.fontFamily
+                font.pixelSize: 11
+                wrapMode: Text.WordWrap
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: theme.spaceSm
+                Item { Layout.fillWidth: true }
+                RotoButton { theme: window.uiTheme; text: "Keep working"; onClicked: closeGuard.close() }
+                RotoButton {
+                    theme: window.uiTheme
+                    primary: window.appController.status === "Waiting for Resolve"
+                    dangerStyle: window.appController.status !== "Waiting for Resolve"
+                    text: window.appController.status === "Waiting for Resolve" ? "Close when finished" : "Cancel & close"
+                    onClicked: {
+                        closeGuard.close()
+                        window.appController.requestClose()
                     }
-                    Text {
-                        Layout.fillWidth: true
-                        Layout.leftMargin: 18
-                        Layout.rightMargin: 18
-                        text: "Install only the models you want to keep locally. The selected default is used for new sessions."
-                        color: window.secondary
-                        font.family: "Segoe UI Variable Text"
-                        font.pixelSize: 10
-                        wrapMode: Text.WordWrap
-                    }
-
-                    Repeater {
-                        model: window.modelManager.models
-                        delegate: Rectangle {
-                            id: modelCard
-                            required property var modelData
-                            Layout.fillWidth: true
-                            Layout.leftMargin: 18
-                            Layout.rightMargin: 18
-                            Layout.preferredHeight: 92
-                            radius: 8
-                            color: window.panel2
-                            border.width: modelData.selected ? 1 : 1
-                            border.color: modelData.selected ? window.accent : window.border
-
-                            RowLayout {
-                                anchors.fill: parent
-                                anchors.margins: 12
-                                spacing: 12
-                                ColumnLayout {
-                                    Layout.fillWidth: true
-                                    spacing: 2
-                                    RowLayout {
-                                        Text {
-                                            text: modelCard.modelData.name
-                                            color: window.text
-                                            font.family: "Segoe UI Variable Text"
-                                            font.pixelSize: 13
-                                            font.weight: Font.DemiBold
-                                        }
-                                        Text {
-                                            text: modelCard.modelData.selected ? "Default" : modelCard.modelData.status
-                                            color: modelCard.modelData.selected ? window.accent : modelCard.modelData.installed ? window.success : window.muted
-                                            font.family: "Segoe UI Variable Text"
-                                            font.pixelSize: 10
-                                        }
-                                    }
-                                    Text {
-                                        Layout.fillWidth: true
-                                        text: modelCard.modelData.description
-                                        color: window.secondary
-                                        font.family: "Segoe UI Variable Text"
-                                        font.pixelSize: 10
-                                        elide: Text.ElideRight
-                                    }
-                                    Text {
-                                        text: "~" + modelCard.modelData.downloadMb + " MB  ·  " + modelCard.modelData.minimumVramGb + " GB VRAM recommended"
-                                        color: window.muted
-                                        font.family: "Segoe UI Variable Text"
-                                        font.pixelSize: 9
-                                    }
-                                }
-                                FluentButton {
-                                    visible: modelCard.modelData.installed && !modelCard.modelData.selected
-                                    text: "Set default"
-                                    enabled: !window.modelManager.busy && !window.appController.busy
-                                    onClicked: window.modelManager.setDefaultModel(modelCard.modelData.id)
-                                }
-                                FluentButton {
-                                    text: modelCard.modelData.installed ? "Remove" : "Download"
-                                    dangerStyle: modelCard.modelData.installed
-                                    enabled: !window.modelManager.busy && !window.appController.busy
-                                    onClicked: {
-                                        if (modelCard.modelData.installed)
-                                            window.modelManager.removeModel(modelCard.modelData.id)
-                                        else
-                                            window.modelManager.downloadModel(modelCard.modelData.id)
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: window.border; Layout.leftMargin: 18; Layout.rightMargin: 18; Layout.topMargin: 4 }
-                    Text {
-                        Layout.leftMargin: 18
-                        text: "System"
-                        color: window.text
-                        font.family: "Segoe UI Variable Display"
-                        font.pixelSize: 15
-                        font.weight: Font.DemiBold
-                    }
-                    Text {
-                        Layout.fillWidth: true
-                        Layout.leftMargin: 18
-                        Layout.rightMargin: 18
-                        text: window.appController.computeDevice + "\n" + window.appController.computeDetail
-                        color: window.secondary
-                        font.family: "Segoe UI Variable Text"
-                        font.pixelSize: 10
-                        wrapMode: Text.WordWrap
-                    }
-                    Text {
-                        Layout.fillWidth: true
-                        Layout.leftMargin: 18
-                        Layout.rightMargin: 18
-                        text: "Model cache: " + window.modelManager.cachePath
-                        color: window.muted
-                        font.family: "Segoe UI Variable Text"
-                        font.pixelSize: 9
-                        wrapMode: Text.WrapAnywhere
-                    }
-                    Text {
-                        Layout.fillWidth: true
-                        Layout.leftMargin: 18
-                        Layout.rightMargin: 18
-                        visible: window.modelManager.lastError.length > 0
-                        text: window.modelManager.lastError
-                        color: window.danger
-                        font.family: "Segoe UI Variable Text"
-                        font.pixelSize: 10
-                        wrapMode: Text.WordWrap
-                    }
-                    Item { Layout.preferredHeight: 14 }
                 }
             }
         }
@@ -1079,15 +860,14 @@ ApplicationWindow {
 
     Shortcut { sequence: "Ctrl+Z"; onActivated: window.appController.undo() }
     Shortcut { sequence: "Ctrl+Y"; onActivated: window.appController.redo() }
-    Shortcut {
-        sequence: "Ctrl+,"
-        onActivated: {
-            window.modelManager.refresh()
-            settingsPopup.open()
-        }
-    }
+    Shortcut { sequence: "Ctrl+,"; onActivated: window.settingsRequested() }
 
     onClosing: close => {
+        if (window.appController.busy) {
+            close.accepted = false
+            closeGuard.open()
+            return
+        }
         close.accepted = window.appController.requestClose()
         if (close.accepted)
             window.appController.closeSession()
