@@ -59,8 +59,8 @@ def main(argv: list[str] | None = None) -> int:
             "OpenRoto is ready for DaVinci Resolve Free and Studio.\n\n"
             "Place the playhead over a video clip, then choose\n\n"
             "Workspace  ›  Scripts  ›  OpenRoto\n\n"
-            "On Resolve Free, OpenRoto opens automatically after the clip export. "
-            "When the matte is ready, choose Workspace › Scripts › OpenRoto Apply.",
+            "Select and track the subject in OpenRoto, then press Render & Apply. "
+            "The matte is applied in Resolve automatically and OpenRoto closes when finished.",
         )
         return 2
     try:
