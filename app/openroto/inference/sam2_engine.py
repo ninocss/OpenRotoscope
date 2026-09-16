@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import gc
+import shutil
 import threading
 from collections.abc import Callable
 from pathlib import Path
@@ -70,16 +71,15 @@ class Sam2Engine:
                 ) from error
             if progress:
                 progress(0.62, "Preparing video frames")
-            frame_count = sum(
-                1
-                for path in self.frames_dir.iterdir()
-                if path.suffix.lower() in {".png", ".jpg", ".jpeg"}
-            )
-            if frame_count == 0:
-                raise InferenceUnavailableError("Resolve did not export any readable video frames.")
+            try:
+                predictor_frames_dir, frame_count = self._prepare_predictor_frames(progress)
+            except Exception as error:
+                raise InferenceUnavailableError(
+                    f"Could not prepare the exported frames for SAM2: {error}"
+                ) from error
             try:
                 state = predictor.init_state(
-                    video_path=str(self.frames_dir),
+                    video_path=str(predictor_frames_dir),
                     offload_video_to_cpu=True,
                     offload_state_to_cpu=frame_count > 600,
                     async_loading_frames=frame_count > 120,
@@ -208,6 +208,63 @@ class Sam2Engine:
                 f"Tracking did not produce a mask for frame {missing[0] + 1}."
             )
 
+    def _prepare_predictor_frames(
+        self, progress: ProgressCallback | None = None
+    ) -> tuple[Path, int]:
+        """Stage Resolve image sequences into SAM2's required numeric JPEG layout.
+
+        The pinned SAM2 loader only accepts a directory containing files named
+        like ``00000.jpg``. Resolve intentionally exports PNG frames so the UI
+        and final matte workflow stay lossless, therefore inference gets its own
+        cached JPEG view instead of changing the source session frames.
+        """
+
+        source_frames = sorted(
+            (
+                path
+                for path in self.frames_dir.iterdir()
+                if path.is_file() and path.suffix.lower() in {".png", ".jpg", ".jpeg"}
+            ),
+            key=lambda path: path.name.lower(),
+        )
+        frame_count = len(source_frames)
+        if frame_count == 0:
+            raise InferenceUnavailableError("Resolve did not export any readable video frames.")
+
+        cache_dir = self.frames_dir / ".sam2-jpeg"
+        expected = [cache_dir / f"{index:08d}.jpg" for index in range(frame_count)]
+        cache_is_current = cache_dir.is_dir() and all(
+            destination.is_file()
+            and destination.stat().st_mtime_ns >= source.stat().st_mtime_ns
+            for source, destination in zip(source_frames, expected, strict=True)
+        )
+        if cache_is_current:
+            return cache_dir, frame_count
+
+        if cache_dir.exists():
+            shutil.rmtree(cache_dir)
+        cache_dir.mkdir(parents=True, exist_ok=False)
+
+        from PIL import Image
+
+        for index, source in enumerate(source_frames):
+            if self._cancelled.is_set():
+                raise InterruptedError("Preparing video frames was cancelled")
+            destination = cache_dir / f"{index:08d}.jpg"
+            with Image.open(source) as image:
+                image.convert("RGB").save(
+                    destination,
+                    format="JPEG",
+                    quality=95,
+                    subsampling=0,
+                    optimize=False,
+                )
+            if progress and (index == frame_count - 1 or index % 24 == 0):
+                fraction = (index + 1) / frame_count
+                progress(0.62 + 0.10 * fraction, f"Preparing frame {index + 1}/{frame_count}")
+
+        return cache_dir, frame_count
+
     def _fill_untracked(self, start: int, end: int, source_frame: int) -> None:
         """Direction-only tracking produces transparent frames outside its pass."""
         source = self.raw_masks_dir / f"mask_{source_frame:08d}.png"
@@ -225,8 +282,11 @@ class Sam2Engine:
         candidates = (
             self.frames_dir / f"{frame:08d}.png",
             self.frames_dir / f"{frame:08d}.jpg",
+            self.frames_dir / f"{frame:08d}.jpeg",
             self.frames_dir / f"frame_{frame:08d}.png",
             self.frames_dir / f"frame_{frame + 1:08d}.png",
+            self.frames_dir / f"frame_{frame:08d}.jpg",
+            self.frames_dir / f"frame_{frame + 1:08d}.jpg",
         )
         for candidate in candidates:
             if candidate.exists():
