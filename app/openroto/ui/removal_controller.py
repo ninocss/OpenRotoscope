@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
-from PySide6.QtCore import Property, QObject, QTimer, QUrl, Signal, Slot
+from PySide6.QtCore import Property, QObject, QUrl, Signal, Slot
 
 from openroto.free_handoff import FreeHandoffController
 from openroto.inference.removal import RemovalEngine, RemovalSettings
@@ -37,7 +37,10 @@ class RemovalController(QObject):
         self._engine = RemovalEngine(app_controller.manifest.frames_dir, app_controller._raw_dir)
         self._engine.set_timing_callback(self._set_timing)
 
-        app_controller.pointsChanged.connect(self._on_selection_changed)
+        # Frame navigation emits pointsChanged in the rotoscope controller, so do
+        # not use that signal as a removal invalidation trigger. trackingStateChanged
+        # is emitted when a real prompt/model edit makes a previously tracked mask dirty.
+        app_controller.trackingStateChanged.connect(self._on_tracking_state_changed)
         app_controller.changed.connect(self._on_app_changed)
         app_controller.frameChanged.connect(self.changed.emit)
         app_controller.operationFinished.connect(self._on_operation_finished)
@@ -225,8 +228,9 @@ class RemovalController(QObject):
             "DaVinci Resolve did not confirm the object-removal apply step within two minutes."
         )
 
-    def _on_selection_changed(self) -> None:
-        self._invalidate()
+    def _on_tracking_state_changed(self) -> None:
+        if self._app.trackingDirty:
+            self._invalidate()
 
     def _on_app_changed(self) -> None:
         if self._app.trackingDirty:
@@ -258,5 +262,5 @@ class RemovalController(QObject):
         self._ready = False
         if self._viewer_mode == "removed":
             self._viewer_mode = "mask"
-        if was_ready or self._viewer_mode == "mask":
+        if was_ready:
             self.changed.emit()
