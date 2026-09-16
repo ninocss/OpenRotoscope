@@ -146,7 +146,8 @@ class ResolveLauncherPackagingTests(unittest.TestCase):
         self.assertIn('if mode == "remove"', wrapper)
         self.assertIn('_base["_apply_matte"]', wrapper)
         self.assertIn('_apply_removal(', wrapper)
-        self.assertIn('removed_%08d.png', wrapper)
+        self.assertIn('f"removed_{index:08d}.png"', wrapper)
+        self.assertIn('removed_00000000.png', wrapper)
 
     def test_build_downloads_a_private_resolve_python_runtime(self):
         build = (ROOT / "scripts" / "build.ps1").read_text(encoding="utf-8")
