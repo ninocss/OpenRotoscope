@@ -5,6 +5,7 @@ import gc
 import os
 import shutil
 import threading
+import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -16,6 +17,7 @@ from openroto.inference.catalog import MODEL_CATALOG
 from openroto.inference.matte import save_raw_mask
 
 ProgressCallback = Callable[[float, str], None]
+TimingCallback = Callable[[str, float], None]
 
 
 class InferenceUnavailableError(RuntimeError):
@@ -38,6 +40,17 @@ class Sam2Engine:
         self._torch = None
         self._lock = threading.RLock()
         self._cancelled = threading.Event()
+        self._timing_callback: TimingCallback | None = None
+
+    def set_timing_callback(self, callback: TimingCallback | None) -> None:
+        self._timing_callback = callback
+
+    def _report_timing(self, key: str, started_ns: int) -> float:
+        elapsed_ms = (time.perf_counter_ns() - started_ns) / 1_000_000.0
+        callback = self._timing_callback
+        if callback is not None:
+            callback(key, elapsed_ms)
+        return elapsed_ms
 
     def cancel(self) -> None:
         self._cancelled.set()
@@ -84,6 +97,7 @@ class Sam2Engine:
                         torch.backends.cudnn.allow_tf32 = True
                 except Exception:
                     pass
+            started_ns = time.perf_counter_ns()
             try:
                 predictor = SAM2VideoPredictor.from_pretrained(
                     MODEL_CATALOG[preset].repository, device=device
@@ -93,6 +107,8 @@ class Sam2Engine:
                 raise InferenceUnavailableError(
                     f"Could not load {MODEL_CATALOG[preset].display_name}: {error}"
                 ) from error
+            finally:
+                self._report_timing("model_load", started_ns)
 
             self._predictor = predictor
             self._image_predictor = image_predictor
@@ -142,13 +158,17 @@ class Sam2Engine:
             )
             if progress:
                 progress(0.72, "Creating selection")
-            with self._inference_context():
-                masks, _, _ = self._image_predictor.predict(
-                    point_coords=coordinates,
-                    point_labels=labels,
-                    multimask_output=False,
-                    normalize_coords=True,
-                )
+            started_ns = time.perf_counter_ns()
+            try:
+                with self._inference_context():
+                    masks, _, _ = self._image_predictor.predict(
+                        point_coords=coordinates,
+                        point_labels=labels,
+                        multimask_output=False,
+                        normalize_coords=True,
+                    )
+            finally:
+                self._report_timing("predict", started_ns)
             mask = np.asarray(masks[0], dtype=np.uint8)
             destination = self.raw_masks_dir / f"mask_{frame:08d}.png"
             result = save_raw_mask(mask, destination)
@@ -206,12 +226,22 @@ class Sam2Engine:
             if direction in {TrackingDirection.BOTH, TrackingDirection.BACKWARD}:
                 passes.append((True, max(prompts)))
 
+            propagate_ns = 0
             for reverse, start_frame in passes:
                 with self._inference_context():
-                    iterator = self._predictor.propagate_in_video(
-                        self._state, start_frame_idx=start_frame, reverse=reverse
+                    iterator = iter(
+                        self._predictor.propagate_in_video(
+                            self._state, start_frame_idx=start_frame, reverse=reverse
+                        )
                     )
-                    for frame_index, object_ids, logits in iterator:
+                    while True:
+                        started_ns = time.perf_counter_ns()
+                        try:
+                            frame_index, object_ids, logits = next(iterator)
+                        except StopIteration:
+                            propagate_ns += time.perf_counter_ns() - started_ns
+                            break
+                        propagate_ns += time.perf_counter_ns() - started_ns
                         if self._cancelled.is_set():
                             raise InterruptedError("Tracking was cancelled")
                         frame_index = int(frame_index)
@@ -228,6 +258,10 @@ class Sam2Engine:
                                 min(1.0, 0.42 + 0.58 * fraction),
                                 f"Tracking frame {frame_index + 1}/{frame_count}",
                             )
+            if propagate_ns:
+                callback = self._timing_callback
+                if callback is not None:
+                    callback("propagate", propagate_ns / 1_000_000.0)
 
             if direction == TrackingDirection.FORWARD:
                 self._fill_untracked(0, seed, seed)
@@ -254,8 +288,12 @@ class Sam2Engine:
         with Image.open(frame_path) as source:
             image = source.convert("RGB")
             size = image.size
-            with self._inference_context():
-                self._image_predictor.set_image(image)
+            started_ns = time.perf_counter_ns()
+            try:
+                with self._inference_context():
+                    self._image_predictor.set_image(image)
+            finally:
+                self._report_timing("image_embedding", started_ns)
         self._image_frame = frame
         self._image_size = size
         return size
@@ -274,6 +312,7 @@ class Sam2Engine:
             ) from error
         if progress:
             progress(0.30, "Initializing video tracking")
+        started_ns = time.perf_counter_ns()
         try:
             self._state = self._predictor.init_state(
                 video_path=str(predictor_frames_dir),
@@ -285,6 +324,8 @@ class Sam2Engine:
             raise InferenceUnavailableError(
                 f"Could not prepare the exported frames: {error}"
             ) from error
+        finally:
+            self._report_timing("init_state", started_ns)
         if progress:
             progress(0.42, "Tracking ready")
 
