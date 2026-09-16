@@ -4,9 +4,11 @@ QtObject {
     id: theme
     required property bool dark
 
-    readonly property string fontFamily: "Segoe UI Variable Text"
-    readonly property string displayFontFamily: "Segoe UI Variable Display"
-    readonly property string monoFontFamily: "Cascadia Mono"
+    // Keep the UI readable on supported Windows 10/11 installations without
+    // depending on optional Windows 11 / Terminal font families.
+    readonly property string fontFamily: "Segoe UI"
+    readonly property string displayFontFamily: "Segoe UI"
+    readonly property string monoFontFamily: "Consolas"
 
     readonly property int space2xs: 4
     readonly property int spaceXs: 6
