@@ -44,8 +44,17 @@ class ResolveLauncherPackagingTests(unittest.TestCase):
         self.assertIn('_set_status("bridge-returned")', bootstrap)
         self.assertIn('_set_status(f"failed:', bootstrap)
 
-    def test_installer_deploys_bootstrap_bridge_and_python_home(self):
+    def test_installer_deploys_launcher_to_both_user_discovery_roots(self):
         installer = (ROOT / "installer" / "OpenRoto.iss").read_text(encoding="utf-8")
+        self.assertIn(
+            'DestDir: "{userappdata}\\Blackmagic Design\\DaVinci Resolve\\Support\\Fusion\\Scripts\\Utility"',
+            installer,
+        )
+        self.assertIn(
+            'DestDir: "{userappdata}\\Blackmagic Design\\DaVinci Resolve\\Fusion\\Scripts\\Utility"',
+            installer,
+        )
+        self.assertEqual(2, installer.count('Source: "..\\resolve\\OpenRoto.lua"'))
         self.assertIn('Source: "..\\resolve\\OpenRotoEntry.py"', installer)
         self.assertIn('DestName: "OpenRoto.py3"', installer)
         self.assertIn('Source: "..\\resolve\\OpenRoto.py"', installer)
@@ -54,12 +63,17 @@ class ResolveLauncherPackagingTests(unittest.TestCase):
         self.assertIn('ValueData: "{app}\\python-runtime"', installer)
         self.assertIn("ChangesEnvironment=yes", installer)
 
-    def test_dev_install_uses_one_canonical_resolve_location(self):
+    def test_dev_install_uses_both_user_discovery_roots(self):
         script = (ROOT / "scripts" / "install-dev.ps1").read_text(encoding="utf-8")
         self.assertIn(
             'DaVinci Resolve\\Support\\Fusion\\Scripts\\Utility',
             script,
         )
+        self.assertIn(
+            'DaVinci Resolve\\Fusion\\Scripts\\Utility',
+            script,
+        )
+        self.assertIn("foreach ($dir in $scriptDirs)", script)
         self.assertIn(
             '"resolve\\OpenRotoEntry.py") -Destination (Join-Path $bridgeDir "OpenRoto.py3")',
             script,
@@ -68,9 +82,6 @@ class ResolveLauncherPackagingTests(unittest.TestCase):
             '"resolve\\OpenRoto.py") -Destination (Join-Path $bridgeDir "OpenRotoBridge.py")',
             script,
         )
-        self.assertEqual(1, script.count('"resolve\\OpenRoto.lua"'))
-        self.assertIn("$legacyScriptDirs", script)
-        self.assertIn("Remove-Item -LiteralPath $path -Force", script)
         self.assertIn('SetEnvironmentVariable("FUSION_Python3_Home"', script)
 
     def test_build_downloads_a_private_resolve_python_runtime(self):
