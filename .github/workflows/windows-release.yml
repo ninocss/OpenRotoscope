@@ -1,0 +1,47 @@
+name: Windows release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - name: Build application
+        shell: pwsh
+        run: ./scripts/build.ps1
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --yes --no-progress
+      - name: Build installer
+        shell: pwsh
+        run: iscc installer/OpenRoto.iss
+      - name: Create checksum
+        shell: pwsh
+        run: |
+          $file = Get-ChildItem installer/output/OpenRotoSetup-*.exe | Select-Object -First 1
+          $hash = (Get-FileHash $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $($file.Name)" | Set-Content -Encoding ascii "$($file.FullName).sha256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OpenRoto-Windows
+          path: |
+            installer/output/*.exe
+            installer/output/*.sha256
+      - uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            installer/output/*.exe
+            installer/output/*.sha256
+
