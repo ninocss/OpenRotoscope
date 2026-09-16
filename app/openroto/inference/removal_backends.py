@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import signal
 import subprocess
 import time
 from dataclasses import asdict, dataclass
@@ -118,6 +119,27 @@ def _runner_script(backend_id: str) -> Path:
     return Path(__file__).with_name("removal_runners") / filename
 
 
+def _terminate_process_tree(process: subprocess.Popen) -> None:
+    if process.poll() is not None:
+        return
+    if os.name == "nt":
+        subprocess.run(
+            ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+        return
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+        process.wait(timeout=5)
+    except Exception:
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except Exception:
+            process.kill()
+
+
 def run_external_backend(
     backend_id: str,
     *,
@@ -147,6 +169,7 @@ def run_external_backend(
     destination.mkdir(parents=True, exist_ok=True)
     job_path = destination.parent / f".{backend_id}-job.json"
     result_path = destination.parent / f".{backend_id}-result.json"
+    log_path = destination.parent / f".{backend_id}-backend.log"
     job = {
         "backend": backend_id,
         "backend_root": str(backend_root(backend_id).resolve()),
@@ -170,40 +193,36 @@ def run_external_backend(
     if progress:
         progress(0.12, f"Starting {REMOVAL_BACKENDS[backend_id].display_name}")
     started = time.perf_counter_ns()
-    process = subprocess.Popen(
-        [str(backend_python(backend_id)), str(runner), "--job", str(job_path)],
-        cwd=str(backend_root(backend_id)),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-    )
-    output_lines: list[str] = []
-    try:
+    creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    if os.name == "nt":
+        creationflags |= getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+    with log_path.open("w", encoding="utf-8", errors="replace") as log_stream:
+        process = subprocess.Popen(
+            [str(backend_python(backend_id)), str(runner), "--job", str(job_path)],
+            cwd=str(backend_root(backend_id)),
+            stdout=log_stream,
+            stderr=subprocess.STDOUT,
+            text=True,
+            creationflags=creationflags,
+            start_new_session=os.name != "nt",
+        )
         while process.poll() is None:
             if cancelled and cancelled():
-                process.terminate()
-                try:
-                    process.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    process.kill()
+                _terminate_process_tree(process)
                 raise InterruptedError("Object removal was cancelled")
             if progress:
                 progress(0.15, f"{REMOVAL_BACKENDS[backend_id].display_name} is processing")
             time.sleep(0.20)
-        if process.stdout is not None:
-            output_lines = process.stdout.read().splitlines()
-    finally:
-        if process.stdout is not None:
-            process.stdout.close()
 
     elapsed_ms = (time.perf_counter_ns() - started) / 1_000_000.0
     if timing:
         timing("removal_inpaint", elapsed_ms)
     if process.returncode != 0:
-        tail = "\n".join(output_lines[-12:]).strip()
+        try:
+            lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError:
+            lines = []
+        tail = "\n".join(lines[-12:]).strip()
         raise RuntimeError(
             f"{REMOVAL_BACKENDS[backend_id].display_name} failed with exit code {process.returncode}"
             + (f":\n{tail}" if tail else "")
