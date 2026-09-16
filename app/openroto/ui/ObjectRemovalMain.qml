@@ -156,7 +156,7 @@ TimedMain {
                         Layout.fillWidth: true
                         Layout.leftMargin: 14
                         Layout.rightMargin: 14
-                        text: "Use the same Subject and Exclude points as Rotoscope. Track the object, then reconstruct the background."
+                        text: "Use the same Subject and Exclude points as Rotoscope. Removal always tracks both directions so every output frame has a mask."
                         color: window.secondary
                         font.family: "Segoe UI Variable Text"
                         font.pixelSize: 11
@@ -195,7 +195,10 @@ TimedMain {
                         implicitHeight: 34
                         text: window.appController.trackingReady ? "Track again" : "Track object"
                         enabled: window.appController.hasPrompts && !window.blocked
-                        onClicked: window.appController.track()
+                        onClicked: {
+                            window.appController.setTrackingDirection("both")
+                            window.appController.track()
+                        }
                     }
 
                     Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: window.border; Layout.topMargin: 5 }
@@ -349,9 +352,18 @@ TimedMain {
                 }
                 Button {
                     Layout.fillWidth: true
+                    implicitHeight: 34
+                    visible: window.appController.busy
+                    text: window.appController.status === "Waiting for Resolve" ? "Resolve is applying…" : "Cancel"
+                    enabled: window.appController.status !== "Waiting for Resolve"
+                    onClicked: window.removalController.cancel()
+                }
+                Button {
+                    Layout.fillWidth: true
                     implicitHeight: 40
+                    visible: !window.appController.busy
                     text: window.appController.trackingDirty ? "Track, Remove & Apply" : "Remove & Apply"
-                    enabled: window.appController.hasPrompts && window.appController.bridgeConnected && !window.blocked
+                    enabled: window.appController.hasPrompts && window.appController.bridgeConnected
                     onClicked: window.removalController.removeAndApply()
                 }
             }
