@@ -2,7 +2,7 @@
 param(
     [Parameter(Mandatory = $true)]
     [string]$Destination,
-    [string]$Version = "3.12.10"
+    [string]$Version = "3.10.11"
 )
 
 $ErrorActionPreference = "Stop"
@@ -36,11 +36,13 @@ if (-not $stdlibZip) {
     throw "Bundled Python runtime is missing the Python standard-library zip"
 }
 
-# The Resolve bridge intentionally uses only Python's standard library. Verify
-# the exact modules needed at launch so packaging failures are caught in CI.
-& $pythonExe -I -c "import ctypes, json, pathlib, socket, subprocess, sys; print(sys.version); print(sys.prefix)"
+# Keep Resolve on CPython 3.10 for the in-process bridge. Resolve/Fusion's
+# Windows scripting stack has historically depended on APIs removed in Python
+# 3.12, so the application can still be built with 3.12 while the tiny bridge
+# gets a separate, known-compatible interpreter.
+& $pythonExe -I -c "import ctypes, json, pathlib, socket, subprocess, sys; assert sys.version_info[:2] == (3, 10), sys.version; print(sys.version); print(sys.prefix)"
 if ($LASTEXITCODE -ne 0) {
-    throw "Bundled Python runtime failed its standard-library smoke test"
+    throw "Bundled Python runtime failed its Resolve bridge smoke test"
 }
 
 Set-Content -LiteralPath (Join-Path $destinationPath "OPENROTO_PYTHON_RUNTIME.txt") `
