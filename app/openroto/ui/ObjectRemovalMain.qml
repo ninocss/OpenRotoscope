@@ -211,14 +211,52 @@ TimedMain {
                         font.weight: Font.DemiBold
                         font.letterSpacing: 0.8
                     }
+
+                    ComboBox {
+                        id: backendBox
+                        Layout.fillWidth: true
+                        Layout.leftMargin: 14
+                        Layout.rightMargin: 14
+                        model: ["Temporal Fill", "FGT++", "SVOR"]
+                        currentIndex: window.removalController.backend === "fgt" ? 1 : window.removalController.backend === "svor" ? 2 : 0
+                        enabled: !window.blocked
+                        onActivated: index => window.removalController.setBackend(index === 1 ? "fgt" : index === 2 ? "svor" : "temporal")
+                        background: Rectangle {
+                            radius: 6
+                            color: window.panel2
+                            border.width: 1
+                            border.color: backendBox.visualFocus ? window.accent : window.strongBorder
+                        }
+                        contentItem: Text {
+                            leftPadding: 10
+                            text: backendBox.displayText
+                            color: window.text
+                            font.family: "Segoe UI Variable Text"
+                            font.pixelSize: 11
+                            verticalAlignment: Text.AlignVCenter
+                        }
+                    }
+
                     Text {
                         Layout.fillWidth: true
                         Layout.leftMargin: 14
                         Layout.rightMargin: 14
-                        text: "Temporal Fill uses nearby frames where the background is visible and keeps the result local to your machine."
+                        text: window.removalController.backendInfo.description
                         color: window.secondary
                         font.family: "Segoe UI Variable Text"
                         font.pixelSize: 10
+                        wrapMode: Text.WordWrap
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        Layout.leftMargin: 14
+                        Layout.rightMargin: 14
+                        text: window.removalController.backendInfo.status + "  ·  "
+                            + window.removalController.backendInfo.license + "  ·  "
+                            + window.removalController.backendInfo.vram
+                        color: window.removalController.backendInfo.available ? window.success : window.warning
+                        font.family: "Segoe UI Variable Text"
+                        font.pixelSize: 9
                         wrapMode: Text.WordWrap
                     }
 
@@ -257,6 +295,7 @@ TimedMain {
                     }
 
                     RowLayout {
+                        visible: window.removalController.backend === "temporal"
                         Layout.fillWidth: true
                         Layout.leftMargin: 14
                         Layout.rightMargin: 14
@@ -264,6 +303,7 @@ TimedMain {
                         Text { text: "±" + window.removalController.temporalRadius + " f"; color: window.secondary; font.family: "Segoe UI Variable Text"; font.pixelSize: 10 }
                     }
                     Slider {
+                        visible: window.removalController.backend === "temporal"
                         Layout.fillWidth: true
                         Layout.leftMargin: 14
                         Layout.rightMargin: 14
@@ -279,7 +319,7 @@ TimedMain {
                         Layout.rightMargin: 14
                         implicitHeight: 34
                         text: window.removalController.ready ? "Rebuild preview" : "Preview removal"
-                        enabled: window.appController.hasPrompts && !window.blocked
+                        enabled: window.appController.hasPrompts && !window.blocked && window.removalController.backendInfo.available
                         onClicked: window.removalController.preview()
                     }
 
@@ -307,8 +347,15 @@ TimedMain {
                         }
                     }
 
-                    Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: window.border; Layout.topMargin: 5 }
+                    Rectangle {
+                        visible: window.modelManager.performanceStatsVisible
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 1
+                        color: window.border
+                        Layout.topMargin: 5
+                    }
                     Text {
+                        visible: window.modelManager.performanceStatsVisible
                         Layout.leftMargin: 14
                         text: "REMOVAL PERFORMANCE"
                         color: window.muted
@@ -318,7 +365,7 @@ TimedMain {
                         font.letterSpacing: 0.8
                     }
                     Repeater {
-                        model: window.removalController.timings
+                        model: window.modelManager.performanceStatsVisible ? window.removalController.timings : []
                         delegate: RowLayout {
                             required property var modelData
                             Layout.fillWidth: true
@@ -363,7 +410,7 @@ TimedMain {
                     implicitHeight: 40
                     visible: !window.appController.busy
                     text: window.appController.trackingDirty ? "Track, Remove & Apply" : "Remove & Apply"
-                    enabled: window.appController.hasPrompts && window.appController.bridgeConnected
+                    enabled: window.appController.hasPrompts && window.appController.bridgeConnected && window.removalController.backendInfo.available
                     onClicked: window.removalController.removeAndApply()
                 }
             }
