@@ -37,6 +37,20 @@ class ResolveLauncherPackagingTests(unittest.TestCase):
             with self.subTest(token=token):
                 self.assertNotIn(token, executable)
 
+    def test_lua_launcher_persists_stage_diagnostics(self):
+        launcher = (ROOT / "resolve" / "OpenRoto.lua").read_text(encoding="utf-8")
+        self.assertIn('stageKey = "OpenRoto.LauncherStage"', launcher)
+        self.assertIn('errorKey = "OpenRoto.LauncherError"', launcher)
+        self.assertIn('countKey = "OpenRoto.LauncherCount"', launcher)
+        self.assertIn('"lua-entered #"', launcher)
+        self.assertIn('setStage("fusion-host-ready")', launcher)
+        self.assertIn('setStage("appdata-ready")', launcher)
+        self.assertIn('setStage("python-home-ready")', launcher)
+        self.assertIn('setStage("python-runscript-requested")', launcher)
+        self.assertIn('setStage("python-runscript-returned ok="', launcher)
+        self.assertIn('setStage("bootstrap-status ok="', launcher)
+        self.assertIn('setStage("launcher-finished status="', launcher)
+
     def test_python_bootstrap_reports_status_without_lua_file_markers(self):
         bootstrap = (ROOT / "resolve" / "OpenRotoEntry.py").read_text(encoding="utf-8")
         self.assertIn('STATUS_KEY = "OpenRoto.BootstrapStatus"', bootstrap)
