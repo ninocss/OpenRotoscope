@@ -43,6 +43,19 @@ class UiDesignContractTests(unittest.TestCase):
         self.assertIn("RotoSlider", removal)
         self.assertIn("RotoComboBox", removal)
 
+    def test_shared_primitives_remain_safe_on_windows_and_fallback_renderers(self):
+        theme = (UI / "RotoTheme.qml").read_text(encoding="utf-8")
+        glass = (UI / "GlassPanel.qml").read_text(encoding="utf-8")
+        status = (UI / "StatusPill.qml").read_text(encoding="utf-8")
+
+        self.assertIn('fontFamily: "Segoe UI"', theme)
+        self.assertIn('displayFontFamily: "Segoe UI"', theme)
+        self.assertIn('monoFontFamily: "Consolas"', theme)
+        self.assertNotIn("layer.enabled", glass)
+        self.assertNotIn("layer.effect", glass)
+        self.assertIn("maximumLabelWidth", status)
+        self.assertIn("Text.ElideRight", status)
+
 
 if __name__ == "__main__":
     unittest.main()
