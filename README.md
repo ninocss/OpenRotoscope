@@ -47,9 +47,12 @@ selected and are then available offline.
 - Enough temporary disk space for a lossless PNG sequence of the visible clip
 - Internet access the first time each SAM2 preset is loaded
 
-No system Python installation is needed by the release installer. Resolve 21.1
-provides the Python runtime used by the menu bridge; the OpenRoto application
-ships its own runtime.
+No system Python installation is required by the release installer. Resolve and
+Fusion require a compatible Python runtime for Python menu scripts, so the
+Windows build now bundles the official CPython 3.12 embeddable runtime and sets
+Resolve's `FUSION_Python3_Home` override to that private copy. Fully quit and
+restart Resolve after installing or updating OpenRoto so the runtime is loaded
+from process start.
 
 ## Development
 
@@ -84,26 +87,47 @@ Build the packaged application and installer:
 iscc .\installer\OpenRoto.iss
 ```
 
+`build.ps1` also downloads and smoke-tests the official CPython embeddable
+runtime into `dist\OpenRoto\python-runtime`.
+
 For local Resolve testing after a build:
 
 ```powershell
 .\scripts\install-dev.ps1 -AppExecutable .\dist\OpenRoto\OpenRoto.exe
 ```
 
-Restart Resolve after installing or updating the menu script.
-OpenRoto installs a sandbox-compatible Lua menu entry in Resolve's documented
-`Utility` script folder. The Lua launcher calls Fusion's internal `RunScript`
-API with an `OpenRoto.py3` bridge, keeping the bridge inside Resolve while
-explicitly selecting its Python 3 runtime. It does not require or fall back to
-an external system Python installation.
+Fully restart Resolve after installing or updating the menu script.
+OpenRoto installs a Lua menu entry in Resolve's documented `Utility` script
+folder. The Lua launcher pins Fusion to the bundled Python runtime, executes a
+small `!Py3:` probe, then calls `RunScript` on a diagnostic `OpenRoto.py3`
+bootstrap. The bootstrap runs the dependency-free `OpenRotoBridge.py` inside
+Resolve, preserving access to the live Resolve scripting objects without using
+external scripting.
+
+## Startup diagnostics
+
+Startup is split into four logged stages under `%LOCALAPPDATA%\OpenRoto`:
+
+- `launcher.log` — Lua menu invocation, Resolve/Fusion objects, install paths,
+  bundled-runtime checks, Python probe and `RunScript` result.
+- `python-probe.log` — proof that Fusion actually initialized Python 3, including
+  the Python version, executable and prefix it selected.
+- `bridge-bootstrap.log` and `bridge-console.log` — Python environment, Resolve
+  globals, bridge import/compile failures and bridge tracebacks.
+- `app.log` — packaged `OpenRoto.exe` startup, arguments, Python runtime and any
+  uncaught Qt/PyInstaller startup exception.
+
+If OpenRoto fails before a window appears, these files identify the exact stage
+instead of relying on Resolve's often-silent script-menu behavior.
 
 ## Architecture and safety
 
-- `resolve/OpenRoto.lua` is the Resolve Free/Studio menu entry. It executes the
-  installed `OpenRoto.py3` copy of `resolve/OpenRoto.py` through Fusion's
-  internal `RunScript` API. The bridge identifies the clip, writes a DRT safety
-  snapshot, exports frames from a temporary duplicate timeline and owns all
-  Resolve API calls.
+- `resolve/OpenRoto.lua` is the Resolve Free/Studio menu entry. It validates the
+  installation, pins Resolve's Python 3 runtime, runs a Python canary and then
+  executes `OpenRoto.py3` through Fusion's internal `RunScript` API.
+- `resolve/OpenRotoEntry.py` is the installed `OpenRoto.py3` diagnostic
+  bootstrap. It records the Python environment and executes the separately
+  installed `OpenRotoBridge.py`, whose source is `resolve/OpenRoto.py`.
 - `app/openroto` is the standalone Qt Quick application. It communicates with
   the Resolve bridge through an authenticated loopback-only JSON-lines socket.
 - The app writes raw masks separately from the final alpha sequence so edge
@@ -116,7 +140,8 @@ an external system Python installation.
 - If Fusion application fails after creating the compound, the bridge imports
   the DRT snapshot and restores the original timeline.
 - No footage, prompts or telemetry leave the computer. Network access is used
-  only for package and model downloads.
+  only for package/model downloads and for downloading the CPython runtime at
+  build time; the installed Resolve bridge itself is local-only.
 
 Session data lives under `%LOCALAPPDATA%\OpenRoto\Sessions`. Input frames are
 temporary. Final mattes remain there because the Fusion Loader references them;
@@ -125,6 +150,8 @@ do not delete a session that is still used by a Resolve project.
 ## Known preview limitations
 
 - A signed production installer has not been generated in this repository yet.
+- The bundled Python override and final Resolve/Fusion round trip still need
+  live validation on the target Resolve 21.1 Free and Studio builds before 1.0.
 - Resolve PNG renderer naming and the imported Fusion Loader graph need a live
   end-to-end verification on both Free and Studio before version 1.0.
 - The first model load can take several minutes because Hugging Face downloads
