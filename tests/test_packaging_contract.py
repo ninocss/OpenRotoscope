@@ -186,8 +186,10 @@ class ResolveLauncherPackagingTests(unittest.TestCase):
         self.assertIn("unhandled startup exception", launcher)
         self.assertIn('"--free-agent"', main)
         self.assertIn('"--handoff"', main)
-        self.assertIn("FreeWorkflowController", main)
-        self.assertIn("WorkflowController", main)
+        self.assertIn("FreeHandoffController", main)
+        self.assertIn("ApplicationController", main)
+        self.assertIn("RemovalController", main)
+        self.assertIn('"removalController": removal_controller', main)
         self.assertIn("Remove & Apply", removal_ui)
 
     def test_windowed_build_provides_writable_stdio_for_model_loaders(self):
