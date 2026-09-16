@@ -34,7 +34,7 @@ os.environ["QT_SCALE_FACTOR"] = str(ARGS.scale)
 os.environ.setdefault("QT_QUICK_CONTROLS_STYLE", "Basic")
 
 from PIL import Image
-from PySide6.QtCore import QCoreApplication, Qt, QTimer, QUrl
+from PySide6.QtCore import QTimer, QUrl
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtWidgets import QApplication
 
@@ -92,7 +92,6 @@ def build_manifest(root: Path, port: int) -> SessionManifest:
 
 
 def run() -> int:
-    QCoreApplication.setAttribute(Qt.ApplicationAttribute.AA_EnableHighDpiScaling)
     app = QApplication(["openroto-layout-smoke"])
     app.setApplicationName("OpenRoto Layout Smoke")
 
@@ -135,9 +134,9 @@ def run() -> int:
                 actual_height = int(window.height())
                 minimum_width = int(window.minimumWidth())
                 minimum_height = int(window.minimumHeight())
-                image = window.grabWindow()
+                image = window.screen().grabWindow(int(window.winId()))
                 if image.isNull():
-                    raise RuntimeError("QQuickWindow.grabWindow() returned a null image")
+                    raise RuntimeError("screen().grabWindow(winId()) returned a null image")
                 ARGS.output.parent.mkdir(parents=True, exist_ok=True)
                 if not image.save(str(ARGS.output)):
                     raise RuntimeError(f"Could not save {ARGS.output}")
