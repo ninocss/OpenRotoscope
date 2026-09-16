@@ -185,6 +185,24 @@ class ObjectRemovalMixin:
             1.0, "Waiting for Resolve", "Applying removed-object result"
         )
 
+    def _finish_operation(self, status: str, detail: str) -> None:
+        # Studio keeps the operation busy while Resolve owns the apply step. Do
+        # not replace that state with the preview-ready message.
+        if status == "Ready" and self._status == "Waiting for Resolve":
+            super()._finish_operation(status, detail)
+            return
+        if status == "Ready" and self._workflow_mode == "remove" and self._removal_ready:
+            self._busy = False
+            self._progress = 1.0
+            self._status = "Removal ready"
+            self._detail = "Review Original, Mask and Removed, or apply the result to Resolve."
+            self.busyChanged.emit()
+            self.progressChanged.emit()
+            self.statusChanged.emit()
+            self.maskChanged.emit()
+            return
+        super()._finish_operation(status, detail)
+
     @Slot(str, float)
     def _set_removal_timing(self, key: str, elapsed_ms: float) -> None:
         if key not in self._removal_timings:
