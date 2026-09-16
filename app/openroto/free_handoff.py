@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import ctypes
 import os
 import re
@@ -186,11 +187,29 @@ class FreeSessionAgent(QObject):
                 expected = int(match.group("count"))
                 if len(paths) < expected:
                     continue
-                newest = max(path.stat().st_mtime for path in paths)
+
+                exchange_snapshot = free_exchange_root() / f"OpenRotoFree_{session_id}.drt"
+                if not exchange_snapshot.is_file() or exchange_snapshot.stat().st_size <= 0:
+                    continue
+
+                newest = max(
+                    [path.stat().st_mtime for path in paths]
+                    + [exchange_snapshot.stat().st_mtime]
+                )
                 if time.time() - newest < 0.75:
                     continue
+
+                try:
+                    self._claim_session(match, sorted(paths, key=_natural_key)[:expected])
+                except Exception as error:
+                    # Do not mark the session as seen. A transient file lock or an
+                    # agent/UI startup race must be retried on the next poll.
+                    _agent_log(
+                        f"claim failed for free session {session_id}: "
+                        f"{type(error).__name__}: {error}"
+                    )
+                    continue
                 self._seen.add(session_id)
-                self._claim_session(match, sorted(paths, key=_natural_key)[:expected])
         except Exception as error:
             _agent_log(f"poll failed: {type(error).__name__}: {error}")
 
@@ -201,61 +220,99 @@ class FreeSessionAgent(QObject):
         height = int(match.group("height"))
         fps = int(match.group("fps")) / 1000.0
         session_root = free_sessions_root() / session_id
+        staging_root = free_sessions_root() / f".{session_id}.claiming"
+        exchange_snapshot = free_exchange_root() / f"OpenRotoFree_{session_id}.drt"
+
+        if len(exported) != count:
+            raise RuntimeError(
+                f"Resolve exported {len(exported)} frames, expected {count}"
+            )
+        if not exchange_snapshot.is_file() or exchange_snapshot.stat().st_size <= 0:
+            raise RuntimeError("Resolve safety snapshot is not ready yet")
         if session_root.exists():
-            shutil.rmtree(session_root, ignore_errors=True)
-        frames_dir = session_root / "frames"
-        matte_dir = session_root / "matte"
+            # Never overwrite an old applied session. Fusion Loader nodes can keep
+            # referencing these files long after OpenRoto has closed.
+            raise RuntimeError(
+                f"session folder already exists: {session_root}. Start OpenRoto again "
+                "to obtain a fresh Resolve Free session id."
+            )
+
+        shutil.rmtree(staging_root, ignore_errors=True)
+        frames_dir = staging_root / "frames"
+        matte_dir = staging_root / "matte"
         frames_dir.mkdir(parents=True, exist_ok=False)
         matte_dir.mkdir(parents=True, exist_ok=True)
 
-        for index, source in enumerate(exported):
-            shutil.move(str(source), frames_dir / f"{index:08d}.png")
+        try:
+            for index, source in enumerate(exported):
+                if not source.is_file() or source.stat().st_size <= 0:
+                    raise RuntimeError(f"Exported frame {index + 1} is not ready")
+                shutil.copy2(source, frames_dir / f"{index:08d}.png")
 
-        snapshot = session_root / "backup.drt"
-        exchange_snapshot = free_exchange_root() / f"OpenRotoFree_{session_id}.drt"
-        if exchange_snapshot.is_file():
-            shutil.move(str(exchange_snapshot), snapshot)
-        else:
-            snapshot.touch()
+            snapshot = staging_root / "backup.drt"
+            shutil.copy2(exchange_snapshot, snapshot)
+            if snapshot.stat().st_size <= 0:
+                raise RuntimeError("Copied Resolve safety snapshot is empty")
 
-        manifest = SessionManifest(
-            session_id=session_id,
-            token=secrets.token_urlsafe(32),
-            bridge_host="127.0.0.1",
-            bridge_port=1,
-            project_id=f"free-project-{session_id}",
-            project_name="DaVinci Resolve Free",
-            timeline_id=f"free-timeline-{session_id}",
-            timeline_name="Resolve timeline",
-            clip_id=f"free-clip-{session_id}",
-            clip_name="Resolve clip",
-            track_index=1,
-            record_start=0,
-            record_end=count,
-            source_start=0,
-            source_end=count,
-            fps=fps,
-            width=width,
-            height=height,
-            frames_dir=str(frames_dir.resolve()),
-            matte_dir=str(matte_dir.resolve()),
-            snapshot_path=str(snapshot.resolve()),
-            state=SessionState.READY,
-        )
-        manifest_path = session_root / "session.json"
-        write_manifest(manifest_path, manifest)
-        _agent_log(f"claimed free session {session_id} with {count} frames")
-        self._launch_ui(manifest_path)
+            # The manifest points at the final path. Rename the complete staging
+            # directory atomically before launching the UI.
+            final_frames = session_root / "frames"
+            final_matte = session_root / "matte"
+            final_snapshot = session_root / "backup.drt"
+            manifest = SessionManifest(
+                session_id=session_id,
+                token=secrets.token_urlsafe(32),
+                bridge_host="127.0.0.1",
+                bridge_port=1,
+                project_id=f"free-project-{session_id}",
+                project_name="DaVinci Resolve Free",
+                timeline_id=f"free-timeline-{session_id}",
+                timeline_name="Resolve timeline",
+                clip_id=f"free-clip-{session_id}",
+                clip_name="Resolve clip",
+                track_index=1,
+                record_start=0,
+                record_end=count,
+                source_start=0,
+                source_end=count,
+                fps=fps,
+                width=width,
+                height=height,
+                frames_dir=str(final_frames.resolve()),
+                matte_dir=str(final_matte.resolve()),
+                snapshot_path=str(final_snapshot.resolve()),
+                state=SessionState.READY,
+            )
+            manifest_path = staging_root / "session.json"
+            write_manifest(manifest_path, manifest)
+
+            os.replace(staging_root, session_root)
+            final_manifest = session_root / "session.json"
+            _agent_log(f"claimed free session {session_id} with {count} frames")
+            self._launch_ui(final_manifest)
+
+            # Only remove the exchange copies after the complete session is in its
+            # final location and the UI process was started successfully.
+            for source in exported:
+                with contextlib.suppress(OSError):
+                    source.unlink()
+            with contextlib.suppress(OSError):
+                exchange_snapshot.unlink()
+        except Exception:
+            shutil.rmtree(staging_root, ignore_errors=True)
+            # If the staging directory was already renamed but UI startup failed,
+            # remove only this not-yet-applied session. Exchange sources are still
+            # present, so the next poll can retry safely.
+            if session_root.exists():
+                shutil.rmtree(session_root, ignore_errors=True)
+            raise
 
     def _launch_ui(self, manifest_path: Path) -> None:
-        try:
-            subprocess.Popen(
-                _self_command("--session", str(manifest_path), "--handoff"),
-                cwd=str(Path(sys.executable).parent),
-                creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0),
-            )
-        except Exception as error:
-            _agent_log(f"could not open free session UI: {error}")
+        subprocess.Popen(
+            _self_command("--session", str(manifest_path), "--handoff"),
+            cwd=str(Path(sys.executable).parent),
+            creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0),
+        )
 
 
 class FreeHandoffController(ApplicationController):
@@ -340,7 +397,9 @@ class FreeHandoffController(ApplicationController):
             stale.unlink(missing_ok=True)
         self._send_control("apply")
         self._apply_requested = True
-        self._worker_progress(0.98, "Applying in DaVinci Resolve")
+        self._set_progress_from_worker(
+            0.98, "Waiting for Resolve", "Applying the matte in DaVinci Resolve Free"
+        )
 
         deadline = time.monotonic() + self.APPLY_TIMEOUT_SECONDS
         while time.monotonic() < deadline:
