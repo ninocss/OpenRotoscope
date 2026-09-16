@@ -33,6 +33,13 @@ jobs:
       - name: Lint QML
         shell: pwsh
         run: |
+          .\.venv\Scripts\pyside6-qmllint.exe app\openroto\ui\RotoTheme.qml
+          .\.venv\Scripts\pyside6-qmllint.exe app\openroto\ui\GlassPanel.qml
+          .\.venv\Scripts\pyside6-qmllint.exe app\openroto\ui\RotoButton.qml
+          .\.venv\Scripts\pyside6-qmllint.exe app\openroto\ui\RotoSlider.qml
+          .\.venv\Scripts\pyside6-qmllint.exe app\openroto\ui\RotoComboBox.qml
+          .\.venv\Scripts\pyside6-qmllint.exe app\openroto\ui\RotoSwitch.qml
+          .\.venv\Scripts\pyside6-qmllint.exe app\openroto\ui\StatusPill.qml
           .\.venv\Scripts\pyside6-qmllint.exe app\openroto\ui\Main.qml
           .\.venv\Scripts\pyside6-qmllint.exe app\openroto\ui\PolishedMain.qml
           .\.venv\Scripts\pyside6-qmllint.exe app\openroto\ui\TimedMain.qml
