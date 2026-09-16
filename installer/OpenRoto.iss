@@ -34,6 +34,18 @@ Source: "..\resolve\OpenRoto.py"; DestDir: "{userappdata}\Blackmagic Design\DaVi
 Source: "..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\THIRD_PARTY_NOTICES.md"; DestDir: "{app}"; Flags: ignoreversion
 
+[InstallDelete]
+; Remove bridge/menu files left by older preview and development installs. The
+; supported launcher is Lua and the bridge filename is OpenRoto.py3.
+Type: files; Name: "{userappdata}\Blackmagic Design\DaVinci Resolve\Support\Fusion\Scripts\Utility\OpenRoto.py"
+Type: files; Name: "{userappdata}\Blackmagic Design\DaVinci Resolve\Support\Fusion\Scripts\Utility\OpenRoto.py3"
+Type: files; Name: "{userappdata}\Blackmagic Design\DaVinci Resolve\Support\OpenRoto\OpenRoto.py"
+Type: files; Name: "{userappdata}\Blackmagic Design\DaVinci Resolve\Fusion\Scripts\Utility\OpenRoto.lua"
+Type: files; Name: "{userappdata}\Blackmagic Design\DaVinci Resolve\Fusion\Scripts\Utility\OpenRoto.py"
+Type: files; Name: "{userappdata}\Blackmagic Design\DaVinci Resolve\Fusion\Scripts\Utility\OpenRoto.py3"
+Type: files; Name: "{userappdata}\Blackmagic Design\DaVinci Resolve\Fusion\OpenRoto\OpenRoto.py"
+Type: files; Name: "{userappdata}\Blackmagic Design\DaVinci Resolve\Fusion\OpenRoto\OpenRoto.py3"
+
 [Icons]
 Name: "{group}\OpenRoto"; Filename: "{app}\{#MyAppExeName}"
 Name: "{group}\Uninstall OpenRoto"; Filename: "{uninstallexe}"
@@ -47,6 +59,11 @@ Type: files; Name: "{userappdata}\Blackmagic Design\DaVinci Resolve\Support\Fusi
 Type: files; Name: "{userappdata}\Blackmagic Design\DaVinci Resolve\Support\Fusion\Scripts\Utility\OpenRoto.py3"
 Type: files; Name: "{userappdata}\Blackmagic Design\DaVinci Resolve\Support\OpenRoto\OpenRoto.py"
 Type: files; Name: "{userappdata}\Blackmagic Design\DaVinci Resolve\Support\OpenRoto\OpenRoto.py3"
+Type: files; Name: "{userappdata}\Blackmagic Design\DaVinci Resolve\Fusion\Scripts\Utility\OpenRoto.lua"
+Type: files; Name: "{userappdata}\Blackmagic Design\DaVinci Resolve\Fusion\Scripts\Utility\OpenRoto.py"
+Type: files; Name: "{userappdata}\Blackmagic Design\DaVinci Resolve\Fusion\Scripts\Utility\OpenRoto.py3"
+Type: files; Name: "{userappdata}\Blackmagic Design\DaVinci Resolve\Fusion\OpenRoto\OpenRoto.py"
+Type: files; Name: "{userappdata}\Blackmagic Design\DaVinci Resolve\Fusion\OpenRoto\OpenRoto.py3"
 
 [Code]
 function InitializeSetup(): Boolean;

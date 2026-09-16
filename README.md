@@ -80,6 +80,7 @@ Build the packaged application and installer:
 
 ```powershell
 .\scripts\build.ps1
+.venv-build\Scripts\python.exe tests\run_packaged_smoke.py .\dist\OpenRoto\OpenRoto.exe
 iscc .\installer\OpenRoto.iss
 ```
 
@@ -91,17 +92,18 @@ For local Resolve testing after a build:
 
 Restart Resolve after installing or updating the menu script.
 OpenRoto installs a sandbox-compatible Lua menu entry in Resolve's documented
-`Utility` script folder. It runs the dependency-free bridge internally through
-Fusion's explicit `!Py:` execution mode, selecting Resolve 21.1's embedded
-Python 3 interpreter without external scripting access.
+`Utility` script folder. The Lua launcher calls Fusion's internal `RunScript`
+API with an `OpenRoto.py3` bridge, keeping the bridge inside Resolve while
+explicitly selecting its Python 3 runtime. It does not require or fall back to
+an external system Python installation.
 
 ## Architecture and safety
 
-- `resolve/OpenRoto.lua` is the Resolve Free/Studio menu entry and executes
-  `resolve/OpenRoto.py` internally using Fusion's Python execution mode. The
-  bridge identifies the clip, writes a
-  DRT safety snapshot, exports frames from a temporary duplicate timeline and
-  owns all Resolve API calls.
+- `resolve/OpenRoto.lua` is the Resolve Free/Studio menu entry. It executes the
+  installed `OpenRoto.py3` copy of `resolve/OpenRoto.py` through Fusion's
+  internal `RunScript` API. The bridge identifies the clip, writes a DRT safety
+  snapshot, exports frames from a temporary duplicate timeline and owns all
+  Resolve API calls.
 - `app/openroto` is the standalone Qt Quick application. It communicates with
   the Resolve bridge through an authenticated loopback-only JSON-lines socket.
 - The app writes raw masks separately from the final alpha sequence so edge
