@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 
-from PySide6.QtCore import Property, QObject, Signal, Slot
+from PySide6.QtCore import Property, QObject, QSettings, Signal, Slot
 
 from openroto.core.models import ModelPreset
 from openroto.inference.catalog import MODEL_CATALOG
@@ -21,6 +21,17 @@ class ModelManager(QObject):
         self._busy_preset: ModelPreset | None = None
         self._busy_action = ""
         self._last_error = ""
+        self._settings = QSettings("OpenRoto", "OpenRoto")
+        saved_stats = self._settings.value("showPerformanceStats", False)
+        if isinstance(saved_stats, bool):
+            self._performance_stats_visible = saved_stats
+        else:
+            self._performance_stats_visible = str(saved_stats).strip().lower() in {
+                "1",
+                "true",
+                "yes",
+                "on",
+            }
         if hasattr(controller, "changed"):
             controller.changed.connect(self.changed.emit)
         self.operationFinished.connect(self._finish_operation)
@@ -59,6 +70,10 @@ class ModelManager(QObject):
     def busy(self) -> bool:
         return self._busy_preset is not None
 
+    @Property(bool, notify=changed)
+    def performanceStatsVisible(self) -> bool:
+        return self._performance_stats_visible
+
     @Property(str, notify=changed)
     def lastError(self) -> str:
         return self._last_error
@@ -66,6 +81,15 @@ class ModelManager(QObject):
     @Property(str, constant=True)
     def cachePath(self) -> str:
         return str(model_home())
+
+    @Slot(bool)
+    def setPerformanceStatsVisible(self, visible: bool) -> None:
+        next_value = bool(visible)
+        if next_value == self._performance_stats_visible:
+            return
+        self._performance_stats_visible = next_value
+        self._settings.setValue("showPerformanceStats", next_value)
+        self.changed.emit()
 
     @Slot(str)
     def setDefaultModel(self, value: str) -> None:

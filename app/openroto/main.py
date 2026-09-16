@@ -13,7 +13,8 @@ from PySide6.QtWidgets import QApplication, QMessageBox
 
 from openroto.core.manifest import read_manifest
 from openroto.core.models import ModelPreset
-from openroto.free_handoff import FreeHandoffController, FreeSessionAgent, ensure_free_agent
+from openroto.free_agent import FreeSessionAgent
+from openroto.free_handoff import FreeHandoffController, ensure_free_agent
 from openroto.inference.catalog import MODEL_CATALOG
 from openroto.inference.model_cache import model_is_installed
 from openroto.ui.controller import ApplicationController

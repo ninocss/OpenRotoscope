@@ -21,6 +21,9 @@ class UiResponsivenessContractTests(unittest.TestCase):
         removal = (ROOT / "app" / "openroto" / "ui" / "ObjectRemovalMain.qml").read_text(
             encoding="utf-8"
         )
+        model_manager = (ROOT / "app" / "openroto" / "ui" / "model_manager.py").read_text(
+            encoding="utf-8"
+        )
 
         self.assertIn('"ObjectRemovalMain.qml"', main)
         self.assertIn("PolishedMain.qml", build)
@@ -31,6 +34,12 @@ class UiResponsivenessContractTests(unittest.TestCase):
         self.assertNotIn('text: pointItem.modelData.positive ? "+"', polished)
         self.assertIn("window.appController.performanceTimings", timed)
         self.assertIn("last measurement · milliseconds", timed)
+        self.assertIn("window.modelManager.performanceStatsVisible", timed)
+        self.assertIn('text: "Performance statistics"', timed)
+        self.assertIn("setPerformanceStatsVisible", timed)
+        self.assertIn('QSettings("OpenRoto", "OpenRoto")', model_manager)
+        self.assertIn('"showPerformanceStats"', model_manager)
+        self.assertIn("def setPerformanceStatsVisible", model_manager)
         self.assertIn("TimedMain {", removal)
         self.assertIn('text: "Rotoscope"', removal)
         self.assertIn('text: "Remove"', removal)
