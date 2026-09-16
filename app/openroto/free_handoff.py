@@ -81,10 +81,13 @@ def _acquire_agent_mutex():
 
 
 def _natural_key(path: Path):
-    return [int(value) if value.isdigit() else value.lower() for value in re.split(r"(\d+)", path.name)]
+    return [
+        int(value) if value.isdigit() else value.lower()
+        for value in re.split(r"(\d+)", path.name)
+    ]
 
 
-def _fusion_comp_text(mask_path: Path, frame_count: int, width: int, height: int) -> str:
+def fusion_comp_text(mask_path: Path, frame_count: int, width: int, height: int) -> str:
     filename = str(mask_path).replace("\\", "\\\\").replace('"', '\\"')
     last = max(0, frame_count - 1)
     return f'''Composition {{
@@ -131,9 +134,9 @@ def _fusion_comp_text(mask_path: Path, frame_count: int, width: int, height: int
         }},
         ApplyOpenRotoMask = Merge {{
             Inputs = {{
-                Background = Input {{ SourceOp = "Transparent", Source = "Output" }} }},
-                Foreground = Input {{ SourceOp = "MediaIn1", Source = "Output" }} }},
-                EffectMask = Input {{ SourceOp = "OpenRotoMask", Source = "Output" }} }},
+                Background = Input {{ SourceOp = "Transparent", Source = "Output" }},
+                Foreground = Input {{ SourceOp = "MediaIn1", Source = "Output" }},
+                EffectMask = Input {{ SourceOp = "OpenRotoMask", Source = "Output" }},
                 PerformDepthMerge = Input {{ Value = 0 }},
             }},
             ViewInfo = OperatorInfo {{ Pos = {{ 220, 0 }} }},
@@ -212,7 +215,7 @@ class FreeSessionAgent(QObject):
         snapshot = session_root / "backup.drt"
         exchange_snapshot = free_exchange_root() / f"OpenRotoFree_{session_id}.drt"
         if exchange_snapshot.is_file():
-            shutil.copy2(exchange_snapshot, snapshot)
+            shutil.move(str(exchange_snapshot), snapshot)
         else:
             snapshot.touch()
 
@@ -260,8 +263,9 @@ class FreeHandoffController(ApplicationController):
     def __init__(self, manifest: SessionManifest) -> None:
         self._handoff_ready = False
         super().__init__(manifest)
-        # The handoff does not use Resolve's Python socket bridge. Mark the
-        # integration as available so the existing QML keeps the Apply action enabled.
+        # Port 1 is intentionally unreachable for handoff manifests. The base
+        # controller catches that connection error; the filesystem handoff then
+        # presents itself as the active integration to the existing QML.
         self._bridge_connected = True
         self._bridge_failed = False
         self._status = "Ready to select a subject"
@@ -301,7 +305,7 @@ class FreeHandoffController(ApplicationController):
 
         comp_path = Path(self.manifest.matte_dir) / "OpenRoto.comp"
         comp_path.write_text(
-            _fusion_comp_text(
+            fusion_comp_text(
                 self._final_dir / "matte_00000000.png",
                 self.manifest.frame_count,
                 self.manifest.width,
@@ -310,7 +314,9 @@ class FreeHandoffController(ApplicationController):
             encoding="utf-8",
         )
         ready = Path(self.manifest.matte_dir) / "READY_TO_APPLY"
-        ready.write_text(json.dumps({"session_id": self.manifest.session_id}), encoding="utf-8")
+        ready.write_text(
+            json.dumps({"session_id": self.manifest.session_id}), encoding="utf-8"
+        )
         self._handoff_ready = True
         self._status = "Waiting for Resolve"
         self._detail = "Workspace › Scripts › OpenRoto Apply"
