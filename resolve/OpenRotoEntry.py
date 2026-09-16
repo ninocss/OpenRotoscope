@@ -105,12 +105,26 @@ def _bridge_trace(filename: str):
 
 def _run() -> None:
     _set_status("entered")
-    _prepare_environment()
-    entry_path = _entry_path()
     _write("=== Resolve Python bootstrap entered ===")
-    _write(f"entry_path={str(entry_path)!r}")
     _write(f"python={sys.version!r}")
     _write(f"executable={sys.executable!r}")
+
+    # Resolve/Fusion's Windows scripting bridge is not reliable with Python
+    # 3.12+, and some Resolve-side modules still depend on APIs removed there.
+    # OpenRoto ships a private 3.10 runtime specifically for this in-process
+    # bridge. Fail loudly if Resolve ignored FUSION_Python3_Home and loaded a
+    # different interpreter instead of silently doing nothing.
+    if sys.version_info >= (3, 12):
+        raise RuntimeError(
+            "DaVinci Resolve loaded Python "
+            f"{sys.version_info.major}.{sys.version_info.minor}, but OpenRoto's "
+            "Resolve bridge requires Python 3.10/3.11. Reinstall the newest "
+            "OpenRoto build and fully restart Resolve."
+        )
+
+    _prepare_environment()
+    entry_path = _entry_path()
+    _write(f"entry_path={str(entry_path)!r}")
     _write(f"prefix={sys.prefix!r}; base_prefix={getattr(sys, 'base_prefix', None)!r}")
     _write(f"cwd={os.getcwd()!r}")
     _write(f"FUSION_Python3_Home={os.environ.get('FUSION_Python3_Home')!r}")
