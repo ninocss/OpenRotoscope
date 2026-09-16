@@ -134,12 +134,22 @@ class RemovalEngine:
         progress: ProgressCallback | None,
     ) -> None:
         generated = destination.parent / f".{settings.backend}-generated"
+        backend_masks = destination.parent / f".{settings.backend}-masks"
         shutil.rmtree(generated, ignore_errors=True)
+        shutil.rmtree(backend_masks, ignore_errors=True)
+        backend_masks.mkdir(parents=True, exist_ok=False)
         try:
+            for index in range(frame_count):
+                if self._cancelled.is_set():
+                    raise InterruptedError("Object removal was cancelled")
+                padded = self._load_mask(index, settings.padding) * 255
+                Image.fromarray(padded.astype(np.uint8), mode="L").save(
+                    backend_masks / f"mask_{index:08d}.png", compress_level=1
+                )
             run_external_backend(
                 settings.backend,
                 frames_dir=self.frames_dir,
-                masks_dir=self.masks_dir,
+                masks_dir=backend_masks,
                 output_dir=generated,
                 frame_count=frame_count,
                 fps=fps,
@@ -180,6 +190,7 @@ class RemovalEngine:
                     )
         finally:
             shutil.rmtree(generated, ignore_errors=True)
+            shutil.rmtree(backend_masks, ignore_errors=True)
 
     @staticmethod
     def _masked_composite(
