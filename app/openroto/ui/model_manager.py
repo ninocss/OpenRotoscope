@@ -7,6 +7,7 @@ from PySide6.QtCore import Property, QObject, QSettings, Signal, Slot
 from openroto.core.models import ModelPreset
 from openroto.inference.catalog import MODEL_CATALOG
 from openroto.inference.model_cache import download_model, model_home, model_is_installed, remove_model
+from openroto.inference.removal_backends import backend_status
 
 
 class ModelManager(QObject):
@@ -65,6 +66,10 @@ class ModelManager(QObject):
                 }
             )
         return rows
+
+    @Property("QVariantList", notify=changed)
+    def removalBackends(self) -> list[dict[str, object]]:
+        return [backend_status(value) for value in ("temporal", "fgt", "svor")]
 
     @Property(bool, notify=busyChanged)
     def busy(self) -> bool:
