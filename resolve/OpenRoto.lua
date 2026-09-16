@@ -4,7 +4,9 @@
 -- launcher in a restricted sandbox that can use Resolve's application/render
 -- APIs but cannot start Python or external processes. Free therefore renders
 -- the selected clip into OpenRoto's fixed exchange folder; the installed
--- OpenRoto Free agent notices the frames and opens the normal UI.
+-- OpenRoto Free agent notices the frames and opens the normal UI. The launcher
+-- stays alive and waits for a dofile() control signal so Render & Apply can
+-- complete without a second Workspace > Scripts action.
 
 local function resolveGlobal(name)
     local value = rawget(_G, name)
@@ -183,6 +185,31 @@ local function linkedIdString(target)
     return table.concat(ids, ",")
 end
 
+local function findClipById(timeline, clipId)
+    local tracks = tonumber(timeline:GetTrackCount("video")) or 0
+    for trackIndex = 1, tracks do
+        local items = timeline:GetItemListInTrack("video", trackIndex) or {}
+        for _, item in pairs(items) do
+            local ok, id = pcall(function() return item:GetUniqueId() end)
+            if ok and tostring(id) == tostring(clipId) then return item end
+        end
+    end
+    return nil
+end
+
+local function restoreSnapshot(project, timeline, snapshotPath)
+    local mediaPool = project:GetMediaPool()
+    if mediaPool == nil then return false end
+    local ok, restored = pcall(function() return mediaPool:ImportTimelineFromFile(snapshotPath) end)
+    if not ok or restored == nil then return false end
+    local oldName = tostring(timeline:GetName())
+    pcall(function() timeline:SetName("__OpenRoto failed") end)
+    pcall(function() restored:SetName(oldName) end)
+    pcall(function() project:SetCurrentTimeline(restored) end)
+    pcall(function() mediaPool:DeleteTimelines({ timeline }) end)
+    return true
+end
+
 local function pickPngCodec(project)
     local formats = project:GetRenderFormats() or {}
     for formatName, extension in pairs(formats) do
@@ -204,6 +231,9 @@ end
 local function freeExport()
     setStage("free-context")
     if resolveHost == nil then error("Resolve application object is unavailable.") end
+    if type(dofile) ~= "function" then
+        error("Resolve Free does not expose dofile(), which OpenRoto needs for automatic apply.")
+    end
     local manager = resolveHost:GetProjectManager()
     local project = manager and manager:GetCurrentProject() or nil
     if project == nil then error("Open a Resolve project before starting OpenRoto.") end
@@ -239,7 +269,13 @@ local function freeExport()
         "_h" .. tostring(height) ..
         "_f" .. tostring(fps1000)
     local snapshotPath = exchangeDir .. "\\OpenRotoFree_" .. sessionId .. ".drt"
-    local compPath = sessionDir .. [[\matte\OpenRoto.comp]]
+    local finalSnapshotPath = sessionDir .. [[\backup.drt]]
+    local matteDir = sessionDir .. [[\matte]]
+    local compPath = matteDir .. [[\OpenRoto.comp]]
+    local controlPath = matteDir .. [[\CONTROL.lua]]
+    local appliedAckPath = matteDir .. [[\APPLIED.drt]]
+    local failedAckPath = matteDir .. [[\APPLY_FAILED.drt]]
+    local originalLinkedIds = linkedIdString(target)
 
     setData("OpenRoto.Free.SessionId", sessionId)
     setData("OpenRoto.Free.TimelineId", tostring(timeline:GetUniqueId()))
@@ -247,9 +283,9 @@ local function freeExport()
     setData("OpenRoto.Free.RecordStart", startFrame)
     setData("OpenRoto.Free.RecordEnd", endFrame)
     setData("OpenRoto.Free.TrackIndex", trackIndex)
-    setData("OpenRoto.Free.LinkedIds", linkedIdString(target))
+    setData("OpenRoto.Free.LinkedIds", originalLinkedIds)
     setData("OpenRoto.Free.CompPath", compPath)
-    setData("OpenRoto.Free.SnapshotPath", sessionDir .. [[\backup.drt]])
+    setData("OpenRoto.Free.SnapshotPath", finalSnapshotPath)
     setData("OpenRoto.Free.FrameCount", frameCount)
 
     setStage("free-snapshot")
@@ -346,6 +382,125 @@ local function freeExport()
     setData("OpenRoto.Free.ExportPrefix", prefix)
     setStage("free-export-ready:" .. sessionId)
     safePrint("Resolve Free export ready for OpenRoto agent: " .. sessionId)
+
+    return {
+        sessionId = sessionId,
+        project = project,
+        timeline = timeline,
+        timelineId = tostring(timeline:GetUniqueId()),
+        clipId = targetId,
+        recordStart = startFrame,
+        recordEnd = endFrame,
+        linkedIds = originalLinkedIds,
+        compPath = compPath,
+        snapshotPath = finalSnapshotPath,
+        controlPath = controlPath,
+        appliedAckPath = appliedAckPath,
+        failedAckPath = failedAckPath,
+    }
+end
+
+local function applyFreeSession(context)
+    local project = context.project
+    local timeline = project:GetCurrentTimeline()
+    if timeline == nil then error("Open the original Resolve timeline before applying OpenRoto.") end
+    if tostring(timeline:GetUniqueId()) ~= tostring(context.timelineId) then
+        error("Return to the original timeline before applying the OpenRoto matte.")
+    end
+
+    setStage("free-validating-target:" .. tostring(context.sessionId))
+    local target = findClipById(timeline, context.clipId)
+    if target == nil then error("The original OpenRoto clip is no longer present on this timeline.") end
+    if tonumber(target:GetStart()) ~= context.recordStart or tonumber(target:GetEnd()) ~= context.recordEnd then
+        error("The OpenRoto clip was moved or trimmed while OpenRoto was open.")
+    end
+    if linkedIdString(target) ~= context.linkedIds then
+        error("The clip's linked items changed while OpenRoto was open.")
+    end
+
+    local linked = {}
+    local okLinked, linkedItems = pcall(function() return target:GetLinkedItems() end)
+    if okLinked and type(linkedItems) == "table" then
+        for _, item in pairs(linkedItems) do
+            local okType, itemType = pcall(function() return item:GetType() end)
+            local okStart, itemStart = pcall(function() return item:GetStart() end)
+            local okEnd, itemEnd = pcall(function() return item:GetEnd() end)
+            if okType and okStart and okEnd and string.lower(tostring(itemType)) == "audio" and
+               tonumber(itemStart) == context.recordStart and tonumber(itemEnd) == context.recordEnd then
+                table.insert(linked, item)
+            end
+        end
+    end
+
+    local compoundItems = { target }
+    for _, item in ipairs(linked) do table.insert(compoundItems, item) end
+
+    setStage("free-creating-compound:" .. tostring(context.sessionId))
+    local compound = timeline:CreateCompoundClip(compoundItems, { name = "OpenRoto" })
+    if compound == nil then error("Resolve could not create the OpenRoto compound clip.") end
+
+    setStage("free-importing-comp:" .. tostring(context.sessionId))
+    local importOk, composition = pcall(function()
+        return compound:ImportFusionComp(tostring(context.compPath))
+    end)
+    if not importOk or composition == nil then
+        local restored = restoreSnapshot(project, timeline, tostring(context.snapshotPath))
+        if restored then
+            error("Resolve could not import the OpenRoto Fusion composition; the safety timeline snapshot was restored.")
+        end
+        error("Resolve could not import the OpenRoto Fusion composition; the safety snapshot remains in the session folder.")
+    end
+
+    pcall(function() compound:SetClipColor("Sky") end)
+    setData("OpenRoto.Free.LastApplied", tostring(context.sessionId))
+    setStage("free-confirming-apply:" .. tostring(context.sessionId))
+    local ackOk, ackResult = pcall(function()
+        return timeline:Export(tostring(context.appliedAckPath), resolveHost.EXPORT_DRT, resolveHost.EXPORT_NONE)
+    end)
+    if not ackOk or ackResult == false then
+        error("The matte was applied, but Resolve could not write the completion acknowledgement.")
+    end
+    setStage("free-apply-completed:" .. tostring(context.sessionId))
+    setData(errorKey, nil)
+end
+
+local function waitForFreeControl(context)
+    setStage("free-waiting-apply:" .. tostring(context.sessionId))
+    local expectedApply = "openroto-free-apply:" .. tostring(context.sessionId)
+    local expectedCancel = "openroto-free-cancel:" .. tostring(context.sessionId)
+    local iterations = 0
+
+    while true do
+        iterations = iterations + 1
+        if iterations > 432000 then
+            error("OpenRoto Free session timed out while waiting for Render & Apply.")
+        end
+
+        local controlOk, controlValue = pcall(dofile, tostring(context.controlPath))
+        if controlOk then
+            local token = tostring(controlValue or "")
+            if token == expectedCancel then
+                setStage("free-cancelled:" .. tostring(context.sessionId))
+                return
+            end
+            if token == expectedApply then
+                setStage("free-apply-requested:" .. tostring(context.sessionId))
+                local applyOk, applyError = pcall(function() applyFreeSession(context) end)
+                if not applyOk then
+                    pcall(function()
+                        context.timeline:Export(
+                            tostring(context.failedAckPath),
+                            resolveHost.EXPORT_DRT,
+                            resolveHost.EXPORT_NONE
+                        )
+                    end)
+                    error(applyError)
+                end
+                return
+            end
+        end
+        waitBriefly()
+    end
 end
 
 local productName = safeResolveValue("GetProductName")
@@ -356,10 +511,13 @@ if fusionHost == nil then error("OpenRoto: DaVinci Resolve did not expose the Fu
 setStage("fusion-host-ready")
 
 -- Resolve Free 21.1+ does not execute Python utility scripts. Keep all Resolve
--- interaction in Lua and hand frame files to the installed companion process.
+-- interaction in this Lua invocation. The external app sends apply/cancel via
+-- a tiny dofile() control script in the unique session directory.
 if tostring(productName) == "DaVinci Resolve" then
-    local ok, result = pcall(freeExport)
-    if not ok then fail("DaVinci Resolve Free export failed: " .. tostring(result)) end
+    local exportOk, contextOrError = pcall(freeExport)
+    if not exportOk then fail("DaVinci Resolve Free export failed: " .. tostring(contextOrError)) end
+    local waitOk, waitError = pcall(function() waitForFreeControl(contextOrError) end)
+    if not waitOk then fail("DaVinci Resolve Free apply failed: " .. tostring(waitError)) end
     return
 end
 
@@ -372,7 +530,7 @@ setStage("appdata-ready")
 local runtimeHome = getEnv("FUSION_Python3_Home")
 safePrint("FUSION_Python3_Home=" .. tostring(runtimeHome))
 if runtimeHome == nil then
-    fail("Die OpenRoto-Python-Runtime ist in Resolve nicht konfiguriert. Installiere den neuesten OpenRoto-Build und beende Resolve danach vollständig.")
+    fail("Die OpenRoto-Python-Runtime ist in Resolve nicht konfiguriert. Installiere den neuesten Build und beende Resolve danach vollständig.")
 end
 setStage("python-home-ready")
 
