@@ -144,6 +144,8 @@ def run() -> int:
                 if not image.save(str(ARGS.output)):
                     raise RuntimeError(f"Could not save {ARGS.output}")
 
+                expected_pixel_width = round(ARGS.width * ARGS.scale)
+                expected_pixel_height = round(ARGS.height * ARGS.scale)
                 print(
                     json.dumps(
                         {
@@ -151,7 +153,7 @@ def run() -> int:
                             "actual": [actual_width, actual_height],
                             "minimum": [minimum_width, minimum_height],
                             "scale": ARGS.scale,
-                            "device_pixel_ratio": image.devicePixelRatio(),
+                            "expected_pixels": [expected_pixel_width, expected_pixel_height],
                             "image_pixels": [image.width(), image.height()],
                             "mode": ARGS.mode,
                             "theme": ARGS.theme,
@@ -165,6 +167,12 @@ def run() -> int:
                 if actual_width != ARGS.width or actual_height != ARGS.height:
                     raise AssertionError(
                         f"Requested {ARGS.width}x{ARGS.height}, got {actual_width}x{actual_height}"
+                    )
+                if image.width() != expected_pixel_width or image.height() != expected_pixel_height:
+                    raise AssertionError(
+                        "High-DPI render size mismatch: expected "
+                        f"{expected_pixel_width}x{expected_pixel_height}, got "
+                        f"{image.width()}x{image.height()}"
                     )
                 result["ok"] = True
             finally:
