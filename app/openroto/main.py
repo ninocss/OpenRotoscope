@@ -80,7 +80,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     model_manager = ModelManager(controller)
     engine.setInitialProperties({"appController": controller, "modelManager": model_manager})
-    qml_path = Path(__file__).with_name("ui") / "PolishedMain.qml"
+    qml_path = Path(__file__).with_name("ui") / "TimedMain.qml"
     engine.load(QUrl.fromLocalFile(str(qml_path)))
     if not engine.rootObjects():
         model_manager.close()
