@@ -129,6 +129,23 @@ local function safeId(value)
     return cleaned
 end
 
+local function sessionNonce()
+    local timestamp = nil
+    if os ~= nil and type(os.time) == "function" then
+        local ok, value = pcall(os.time)
+        if ok and value ~= nil then timestamp = tostring(value) end
+    end
+    if timestamp == nil or timestamp == "" then timestamp = "notime" end
+
+    -- Lua's default table tostring contains a process-local identity. Combined
+    -- with wall-clock time it prevents a Resolve restart from reusing the same
+    -- clipId + launchCount session folder while staying sandbox-safe.
+    local entropy = string.gsub(tostring({}), "[^A-Za-z0-9]", "")
+    if #entropy > 12 then entropy = string.sub(entropy, #entropy - 11) end
+    if #entropy < 4 then entropy = "nonce" .. tostring(launchCount) end
+    return timestamp .. "-" .. entropy
+end
+
 local function waitBriefly()
     if bmdHost ~= nil then
         local ok = pcall(function() bmdHost.wait(0.10) end)
@@ -257,7 +274,7 @@ local function freeExport()
         24
     )
     local fps1000 = math.floor(fps * 1000 + 0.5)
-    local sessionId = safeId(targetId) .. "-" .. tostring(launchCount)
+    local sessionId = safeId(targetId) .. "-" .. tostring(launchCount) .. "-" .. sessionNonce()
 
     local localData = getEnv("LOCALAPPDATA")
     if localData == nil then error("LOCALAPPDATA is unavailable in Resolve Free.") end
