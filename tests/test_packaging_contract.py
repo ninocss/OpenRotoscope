@@ -14,6 +14,8 @@ class ResolveLauncherPackagingTests(unittest.TestCase):
         self.assertIn("SetData", launcher)
         self.assertIn("GetData", launcher)
         self.assertIn("FUSION_Python3_Home", launcher)
+        self.assertIn("UIDispatcher", launcher)
+        self.assertIn("OpenRoto — Startfehler", launcher)
 
         # Check executable lines only. Comments intentionally explain which
         # Resolve-sandbox facilities must never be reintroduced into the code.
@@ -43,6 +45,8 @@ class ResolveLauncherPackagingTests(unittest.TestCase):
         self.assertIn('_set_status("bridge-running")', bootstrap)
         self.assertIn('_set_status("bridge-returned")', bootstrap)
         self.assertIn('_set_status(f"failed:', bootstrap)
+        self.assertIn("sys.version_info >= (3, 12)", bootstrap)
+        self.assertIn("requires Python 3.10/3.11", bootstrap)
 
     def test_installer_deploys_launcher_to_both_user_discovery_roots(self):
         installer = (ROOT / "installer" / "OpenRoto.iss").read_text(encoding="utf-8")
@@ -91,9 +95,11 @@ class ResolveLauncherPackagingTests(unittest.TestCase):
         )
         self.assertIn("prepare-python-runtime.ps1", build)
         self.assertIn("python-runtime", build)
+        self.assertIn('[string]$Version = "3.10.11"', prepare)
         self.assertIn("python.org/ftp/python", prepare)
         self.assertIn("embed-amd64.zip", prepare)
         self.assertIn("python3*.dll", prepare)
+        self.assertIn("sys.version_info[:2] == (3, 10)", prepare)
 
     def test_packaged_app_uses_crash_logging_entrypoint(self):
         build = (ROOT / "scripts" / "build.ps1").read_text(encoding="utf-8")
