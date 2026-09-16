@@ -1,0 +1,71 @@
+name: Bug report
+description: Report a reproducible OpenRoto problem
+title: "[Bug] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please remove private footage, project names, local paths, credentials and other sensitive information from logs before posting them.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Describe the behavior and what you expected instead.
+    validations:
+      required: true
+  - type: input
+    id: commit
+    attributes:
+      label: OpenRoto version or commit
+      placeholder: e.g. v0.1.0 or a commit SHA
+    validations:
+      required: true
+  - type: dropdown
+    id: resolve_edition
+    attributes:
+      label: DaVinci Resolve edition
+      options:
+        - Free
+        - Studio
+        - Not Resolve-related
+    validations:
+      required: true
+  - type: input
+    id: resolve_version
+    attributes:
+      label: DaVinci Resolve version
+      placeholder: e.g. 21.1
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version
+      placeholder: e.g. Windows 11 24H2
+  - type: input
+    id: gpu
+    attributes:
+      label: GPU
+      placeholder: e.g. RTX 4070 12 GB
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Give the shortest sequence that reproduces the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Paste only the relevant sanitized section of app.log, free-agent.log, console.log or Resolve Lua diagnostics.
+      render: text
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I removed private/sensitive information from the report.
+          required: true
+        - label: I searched existing issues for the same problem.
+          required: true
