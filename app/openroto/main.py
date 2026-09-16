@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+import threading
 from pathlib import Path
 
 from PySide6.QtCore import QCoreApplication, Qt, QTimer, QUrl
@@ -11,7 +12,10 @@ from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from openroto.core.manifest import read_manifest
+from openroto.core.models import ModelPreset
 from openroto.free_handoff import FreeHandoffController, FreeSessionAgent, ensure_free_agent
+from openroto.inference.catalog import MODEL_CATALOG
+from openroto.inference.model_cache import model_is_installed
 from openroto.ui.controller import ApplicationController
 from openroto.ui.mica import apply_mica
 from openroto.ui.model_manager import ModelManager
@@ -76,7 +80,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     model_manager = ModelManager(controller)
     engine.setInitialProperties({"appController": controller, "modelManager": model_manager})
-    qml_path = Path(__file__).with_name("ui") / "Main.qml"
+    qml_path = Path(__file__).with_name("ui") / "PolishedMain.qml"
     engine.load(QUrl.fromLocalFile(str(qml_path)))
     if not engine.rootObjects():
         model_manager.close()
@@ -88,7 +92,28 @@ def main(argv: list[str] | None = None) -> int:
     def configure_window() -> None:
         apply_mica(int(window.winId()), controller.darkMode)
 
+    def prewarm_initial_selection() -> None:
+        """Hide installed-model startup cost behind the time spent viewing the clip."""
+        try:
+            preset = ModelPreset(controller.modelPreset)
+            if not model_is_installed(MODEL_CATALOG[preset]):
+                return
+            # ApplicationController owns this engine for the full session. This
+            # background warmup is opportunistic and Sam2Engine serializes it
+            # safely with a click that happens at the same time.
+            controller._engine.prewarm_frame(controller.currentFrame, preset)
+        except Exception:
+            pass
+
     QTimer.singleShot(0, configure_window)
+    QTimer.singleShot(
+        180,
+        lambda: threading.Thread(
+            target=prewarm_initial_selection,
+            name="OpenRotoPrewarm",
+            daemon=True,
+        ).start(),
+    )
     controller.themeChanged.connect(configure_window)
     controller.closeRequested.connect(window.close)
     app.aboutToQuit.connect(model_manager.close)
