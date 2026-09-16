@@ -15,8 +15,11 @@ class ResolveLauncherPackagingTests(unittest.TestCase):
         self.assertIn("GetData", launcher)
         self.assertIn("FUSION_Python3_Home", launcher)
 
-        # Resolve 21.1 Workspace scripts can run with OS-facing Lua facilities
-        # stripped. The menu launcher must not depend on any of them.
+        # Check executable lines only. Comments intentionally explain which
+        # Resolve-sandbox facilities must never be reintroduced into the code.
+        executable = "\n".join(
+            line for line in launcher.splitlines() if not line.lstrip().startswith("--")
+        )
         forbidden = (
             "io.open",
             "io.read",
@@ -30,7 +33,7 @@ class ResolveLauncherPackagingTests(unittest.TestCase):
         )
         for token in forbidden:
             with self.subTest(token=token):
-                self.assertNotIn(token, launcher)
+                self.assertNotIn(token, executable)
 
     def test_python_bootstrap_reports_status_without_lua_file_markers(self):
         bootstrap = (ROOT / "resolve" / "OpenRotoEntry.py").read_text(encoding="utf-8")
