@@ -155,6 +155,16 @@ class ResolveLauncherPackagingTests(unittest.TestCase):
         self.assertIn('"--handoff"', main)
         self.assertIn("FreeHandoffController", main)
 
+    def test_windowed_build_provides_writable_stdio_for_model_loaders(self):
+        build = (ROOT / "scripts" / "build.ps1").read_text(encoding="utf-8")
+        launcher = (ROOT / "app" / "openroto_launcher.py").read_text(encoding="utf-8")
+        self.assertIn("--windowed", build)
+        self.assertIn("def _ensure_standard_streams()", launcher)
+        self.assertIn("if sys.stdout is None:", launcher)
+        self.assertIn("if sys.stderr is None:", launcher)
+        self.assertIn('with_name("console.log")', launcher)
+        self.assertIn("_ensure_standard_streams()", launcher)
+
 
 if __name__ == "__main__":
     unittest.main()
