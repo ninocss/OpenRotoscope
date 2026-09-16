@@ -66,6 +66,17 @@ class ResolveLauncherPackagingTests(unittest.TestCase):
         self.assertNotIn("RunScript(bridgePath)", free_branch)
         self.assertIn("RunScript(bridgePath)", studio_branch)
 
+    def test_free_session_ids_do_not_repeat_after_resolve_restart(self):
+        launcher = (ROOT / "resolve" / "OpenRoto.lua").read_text(encoding="utf-8")
+        self.assertIn("local function sessionNonce()", launcher)
+        self.assertIn('type(os.time) == "function"', launcher)
+        self.assertIn('string.gsub(tostring({}), "[^A-Za-z0-9]", "")', launcher)
+        self.assertIn('tostring(launchCount) .. "-" .. sessionNonce()', launcher)
+        self.assertNotIn(
+            'local sessionId = safeId(targetId) .. "-" .. tostring(launchCount)\n',
+            launcher,
+        )
+
     def test_free_launcher_applies_without_secondary_workspace_script(self):
         launcher = (ROOT / "resolve" / "OpenRoto.lua").read_text(encoding="utf-8")
         self.assertIn("pcall(dofile", launcher)
