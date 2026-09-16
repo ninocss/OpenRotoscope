@@ -89,9 +89,25 @@ if ($AppExecutable) {
     New-ItemProperty -Path $runKey -Name "OpenRoto Free Agent" -Value $agentCommand -PropertyType String -Force | Out-Null
     Write-Host "Registered the OpenRoto Free agent for user login."
 
+    # A previous dev/install build may still own the singleton mutex. Stop only
+    # hidden OpenRoto --free-agent processes so the freshly installed build is
+    # guaranteed to become the agent used by Resolve Free. Do not terminate an
+    # active --session UI.
+    try {
+        $oldAgents = Get-CimInstance Win32_Process -Filter "Name = 'OpenRoto.exe'" -ErrorAction Stop |
+            Where-Object { $_.CommandLine -and $_.CommandLine -match '(?i)(^|\s)--free-agent(\s|$)' }
+        foreach ($agent in $oldAgents) {
+            Write-Host "Stopping previous OpenRoto Free agent process $($agent.ProcessId)."
+            Stop-Process -Id $agent.ProcessId -Force -ErrorAction Stop
+        }
+        if ($oldAgents) { Start-Sleep -Milliseconds 300 }
+    } catch {
+        Write-Warning "Could not stop a previous OpenRoto Free agent: $($_.Exception.Message)"
+    }
+
     try {
         Start-Process -FilePath $appPath -ArgumentList "--free-agent" -WindowStyle Hidden
-        Write-Host "Started the OpenRoto Free agent."
+        Write-Host "Started the OpenRoto Free agent from $appPath."
     } catch {
         Write-Warning "Could not start the OpenRoto Free agent: $($_.Exception.Message)"
     }
