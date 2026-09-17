@@ -1,12 +1,15 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Window
 
 Slider {
     id: control
     required property var theme
     property string toolTip: ""
+    readonly property bool compactTouchMode: control.Window.window !== null && control.Window.window.width < 1120
 
-    implicitHeight: 28
+    implicitHeight: compactTouchMode ? 44 : 28
+    activeFocusOnTab: enabled && visible
     opacity: enabled ? 1.0 : 0.42
 
     background: Rectangle {
@@ -17,7 +20,7 @@ Slider {
         radius: 2
         color: control.theme.surfaceSunken
         border.width: 1
-        border.color: control.theme.border
+        border.color: control.visualFocus ? control.theme.focus : control.theme.border
 
         Rectangle {
             width: control.visualPosition * parent.width
@@ -30,9 +33,9 @@ Slider {
     handle: Rectangle {
         x: control.leftPadding + control.visualPosition * (control.availableWidth - width)
         y: control.topPadding + control.availableHeight / 2 - height / 2
-        implicitWidth: 18
-        implicitHeight: 18
-        radius: 9
+        implicitWidth: compactTouchMode ? 22 : 18
+        implicitHeight: compactTouchMode ? 22 : 18
+        radius: width / 2
         color: control.pressed ? control.theme.accent : control.theme.surfaceRaised
         border.width: control.visualFocus ? 3 : 2
         border.color: control.visualFocus ? control.theme.focus : control.theme.accent
@@ -41,7 +44,7 @@ Slider {
 
     ToolTip {
         id: tip
-        visible: control.pressed && control.toolTip.length > 0
+        visible: (control.pressed || control.visualFocus) && control.toolTip.length > 0
         text: control.toolTip
         y: -height - 6
         x: Math.round(control.handle.x + (control.handle.width - width) / 2)
