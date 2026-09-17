@@ -7,118 +7,96 @@ import QtQuick.Layouts
 PolishedMain {
     id: window
 
-    component SettingsActionButton: Button {
-        id: control
-        property bool dangerStyle: false
-        implicitHeight: 32
-        leftPadding: 11
-        rightPadding: 11
-        font.family: "Segoe UI Variable Text"
-        font.pixelSize: 11
-        contentItem: Text {
-            text: control.text
-            color: control.dangerStyle ? window.danger : window.text
-            font: control.font
-            horizontalAlignment: Text.AlignHCenter
-            verticalAlignment: Text.AlignVCenter
-        }
-        background: Rectangle {
-            radius: 6
-            color: control.hovered ? (window.dark ? "#3FFFFFFF" : "#10000000") : "transparent"
-            border.width: 1
-            border.color: window.strongBorder
-        }
+    onSettingsRequested: {
+        window.modelManager.refresh()
+        settingsPopup.open()
     }
 
-    Rectangle {
+    GlassPanel {
         parent: window.contentItem
-        z: 1000
-        anchors.top: parent.top
-        anchors.topMargin: 74
-        anchors.right: parent.right
-        anchors.rightMargin: 330
-        width: Math.min(760, parent.width - 360)
-        height: 68
-        radius: 8
+        z: 1200
+        x: Math.max(18, Math.round(((window.compactMode ? window.width : window.width - window.sidePanelWidth) - width) / 2))
+        y: 80
+        width: Math.min(760, window.width - (window.compactMode ? 0 : window.sidePanelWidth) - 72)
+        height: 72
         visible: window.modelManager.performanceStatsVisible
-        color: window.dark ? "#F2292929" : "#F7FFFFFF"
-        border.width: 1
-        border.color: window.strongBorder
+        theme: window.uiTheme
+        strong: true
+        elevated: true
 
         ColumnLayout {
             anchors.fill: parent
-            anchors.leftMargin: 12
-            anchors.rightMargin: 12
-            anchors.topMargin: 7
-            anchors.bottomMargin: 7
+            anchors.leftMargin: window.uiTheme.spaceMd
+            anchors.rightMargin: window.uiTheme.spaceMd
+            anchors.topMargin: window.uiTheme.spaceSm
+            anchors.bottomMargin: window.uiTheme.spaceSm
             spacing: 3
 
             RowLayout {
                 Layout.fillWidth: true
-                spacing: 6
-
+                spacing: window.uiTheme.spaceXs
                 Text {
                     text: "PERFORMANCE"
-                    color: window.muted
-                    font.family: "Segoe UI Variable Text"
+                    color: window.uiTheme.textMuted
+                    font.family: window.uiTheme.fontFamily
                     font.pixelSize: 9
                     font.weight: Font.DemiBold
-                    font.letterSpacing: 0.8
+                    font.letterSpacing: 0.7
                 }
                 Text {
                     text: "last measurement · milliseconds"
-                    color: window.muted
-                    font.family: "Segoe UI Variable Text"
+                    color: window.uiTheme.textMuted
+                    font.family: window.uiTheme.fontFamily
                     font.pixelSize: 9
                 }
                 Item { Layout.fillWidth: true }
+                RotoButton {
+                    theme: window.uiTheme
+                    width: window.compactMode ? 44 : 26; height: window.compactMode ? 44 : 26; leftPadding: 0; rightPadding: 0
+                    quiet: true
+                    text: "×"
+                    toolTip: "Hide performance statistics"
+                    onClicked: window.modelManager.setPerformanceStatsVisible(false)
+                }
             }
 
             RowLayout {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 spacing: 0
-
                 Repeater {
                     model: window.appController.performanceTimings
-
                     delegate: Item {
                         id: timingCell
                         required property int index
                         required property var modelData
                         Layout.fillWidth: true
                         Layout.fillHeight: true
-
                         Column {
                             anchors.centerIn: parent
                             spacing: 1
-
                             Text {
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 text: timingCell.modelData.label
-                                color: window.secondary
-                                font.family: "Segoe UI Variable Text"
+                                color: window.uiTheme.textSecondary
+                                font.family: window.uiTheme.fontFamily
                                 font.pixelSize: 9
-                                horizontalAlignment: Text.AlignHCenter
                             }
                             Text {
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 text: timingCell.modelData.value
-                                color: timingCell.modelData.measured ? window.text : window.muted
-                                font.family: "Cascadia Mono"
+                                color: timingCell.modelData.measured ? window.uiTheme.text : window.uiTheme.textMuted
+                                font.family: window.uiTheme.monoFontFamily
                                 font.pixelSize: 11
                                 font.weight: timingCell.modelData.measured ? Font.DemiBold : Font.Normal
-                                horizontalAlignment: Text.AlignHCenter
                             }
                         }
-
                         Rectangle {
                             visible: timingCell.index > 0
                             anchors.left: parent.left
                             anchors.verticalCenter: parent.verticalCenter
-                            width: 1
-                            height: 25
-                            color: window.border
+                            width: 1; height: 26
+                            color: window.uiTheme.border
                         }
                     }
                 }
@@ -126,94 +104,56 @@ PolishedMain {
         }
     }
 
-    Button {
-        parent: window.contentItem
-        z: 1600
-        anchors.top: parent.top
-        anchors.topMargin: 19
-        anchors.right: parent.right
-        anchors.rightMargin: 18
-        width: 34
-        height: 34
-        text: "⚙"
-        font.family: "Segoe UI Symbol"
-        font.pixelSize: 16
-        contentItem: Text {
-            text: parent.text
-            color: window.text
-            font: parent.font
-            horizontalAlignment: Text.AlignHCenter
-            verticalAlignment: Text.AlignVCenter
-        }
-        background: Rectangle {
-            radius: 6
-            color: parent.hovered ? (window.dark ? "#3FFFFFFF" : "#10000000") : window.panel
-            border.width: parent.visualFocus ? 1 : 0
-            border.color: window.strongBorder
-        }
-        ToolTip.visible: hovered
-        ToolTip.text: "Settings"
-        onClicked: {
-            window.modelManager.refresh()
-            enhancedSettings.open()
-        }
-    }
-
     Popup {
-        id: enhancedSettings
+        id: settingsPopup
+        objectName: "settingsPopup"
         anchors.centerIn: parent
-        width: Math.min(window.width - 80, 720)
-        height: Math.min(window.height - 80, 620)
+        width: Math.min(window.width - 64, 760)
+        height: Math.min(window.height - 64, 650)
         modal: true
         focus: true
         padding: 0
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
 
-        background: Rectangle {
-            radius: 10
-            color: window.panel
-            border.width: 1
-            border.color: window.strongBorder
-        }
+        background: GlassPanel { theme: window.uiTheme; strong: true; elevated: true }
 
-        ColumnLayout {
-            anchors.fill: parent
+        contentItem: ColumnLayout {
             spacing: 0
 
             RowLayout {
                 Layout.fillWidth: true
-                Layout.preferredHeight: 54
-                Layout.leftMargin: 18
-                Layout.rightMargin: 10
-                Text {
+                Layout.preferredHeight: 58
+                Layout.leftMargin: window.uiTheme.spaceXl
+                Layout.rightMargin: window.uiTheme.spaceMd
+                ColumnLayout {
                     Layout.fillWidth: true
-                    text: "Settings"
-                    color: window.text
-                    font.family: "Segoe UI Variable Display"
-                    font.pixelSize: 18
-                    font.weight: Font.DemiBold
+                    spacing: 0
+                    Text {
+                        text: "Settings"
+                        color: window.uiTheme.text
+                        font.family: window.uiTheme.displayFontFamily
+                        font.pixelSize: 18
+                        font.weight: Font.DemiBold
+                    }
+                    Text {
+                        text: "Interface, local models and runtime information"
+                        color: window.uiTheme.textMuted
+                        font.family: window.uiTheme.fontFamily
+                        font.pixelSize: 9
+                    }
                 }
-                Button {
-                    implicitWidth: 34
-                    implicitHeight: 34
+                RotoButton {
+                    theme: window.uiTheme
+                    width: window.compactMode ? 44 : 34; height: window.compactMode ? 44 : 34; leftPadding: 0; rightPadding: 0
+                    quiet: true
                     text: "×"
-                    font.family: "Segoe UI Variable Text"
-                    font.pixelSize: 18
-                    contentItem: Text {
-                        text: parent.text
-                        color: window.text
-                        font: parent.font
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                    }
-                    background: Rectangle {
-                        radius: 6
-                        color: parent.hovered ? (window.dark ? "#3FFFFFFF" : "#10000000") : "transparent"
-                    }
-                    onClicked: enhancedSettings.close()
+                    font.pixelSize: 16
+                    toolTip: "Close settings"
+                    onClicked: settingsPopup.close()
                 }
             }
-            Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: window.border }
+
+            Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: window.uiTheme.border }
 
             ScrollView {
                 Layout.fillWidth: true
@@ -223,54 +163,102 @@ PolishedMain {
 
                 ColumnLayout {
                     width: parent.width
-                    spacing: 10
-                    Item { Layout.preferredHeight: 5 }
+                    spacing: window.uiTheme.spaceMd
+                    Item { Layout.preferredHeight: window.uiTheme.spaceXs }
 
                     Text {
-                        Layout.leftMargin: 18
+                        Layout.leftMargin: window.uiTheme.spaceXl
                         text: "Interface"
-                        color: window.text
-                        font.family: "Segoe UI Variable Display"
+                        color: window.uiTheme.text
+                        font.family: window.uiTheme.displayFontFamily
                         font.pixelSize: 15
                         font.weight: Font.DemiBold
                     }
 
-                    Rectangle {
+                    GlassPanel {
                         Layout.fillWidth: true
-                        Layout.leftMargin: 18
-                        Layout.rightMargin: 18
-                        Layout.preferredHeight: 70
-                        radius: 8
-                        color: window.panel2
-                        border.width: 1
-                        border.color: window.border
+                        Layout.leftMargin: window.uiTheme.spaceXl
+                        Layout.rightMargin: window.uiTheme.spaceXl
+                        Layout.preferredHeight: 92
+                        theme: window.uiTheme
+                        strong: true
+                        ColumnLayout {
+                            anchors.fill: parent
+                            anchors.margins: window.uiTheme.spaceMd
+                            spacing: window.uiTheme.spaceSm
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: 1
+                                Text {
+                                    text: "Appearance"
+                                    color: window.uiTheme.text
+                                    font.family: window.uiTheme.fontFamily
+                                    font.pixelSize: 12
+                                    font.weight: Font.DemiBold
+                                }
+                                Text {
+                                    text: "System follows Windows. Light and Dark stay selected for future sessions."
+                                    color: window.uiTheme.textSecondary
+                                    font.family: window.uiTheme.fontFamily
+                                    font.pixelSize: 10
+                                }
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: window.uiTheme.spaceXs
+                                Repeater {
+                                    model: [
+                                        {"label": "System", "value": "system"},
+                                        {"label": "Light", "value": "light"},
+                                        {"label": "Dark", "value": "dark"}
+                                    ]
+                                    delegate: RotoButton {
+                                        required property var modelData
+                                        Layout.fillWidth: true
+                                        theme: window.uiTheme
+                                        text: modelData.label
+                                        selected: window.themeMode === modelData.value
+                                        quiet: !selected
+                                        onClicked: window.themeMode = modelData.value
+                                    }
+                                }
+                            }
+                        }
+                    }
 
+                    GlassPanel {
+                        Layout.fillWidth: true
+                        Layout.leftMargin: window.uiTheme.spaceXl
+                        Layout.rightMargin: window.uiTheme.spaceXl
+                        Layout.preferredHeight: 76
+                        theme: window.uiTheme
+                        strong: true
                         RowLayout {
                             anchors.fill: parent
-                            anchors.leftMargin: 12
-                            anchors.rightMargin: 12
-                            spacing: 12
+                            anchors.leftMargin: window.uiTheme.spaceMd
+                            anchors.rightMargin: window.uiTheme.spaceMd
+                            spacing: window.uiTheme.spaceMd
                             ColumnLayout {
                                 Layout.fillWidth: true
                                 spacing: 2
                                 Text {
                                     text: "Performance statistics"
-                                    color: window.text
-                                    font.family: "Segoe UI Variable Text"
+                                    color: window.uiTheme.text
+                                    font.family: window.uiTheme.fontFamily
                                     font.pixelSize: 12
                                     font.weight: Font.DemiBold
                                 }
                                 Text {
                                     Layout.fillWidth: true
-                                    text: "Show live selection and removal timings. Measurements keep running while this is hidden."
-                                    color: window.secondary
-                                    font.family: "Segoe UI Variable Text"
+                                    text: "Show live selection and removal timings. Measurements continue while the overlay is hidden."
+                                    color: window.uiTheme.textSecondary
+                                    font.family: window.uiTheme.fontFamily
                                     font.pixelSize: 10
                                     wrapMode: Text.WordWrap
                                 }
                             }
-                            Switch {
-                                id: performanceSwitch
+                            RotoSwitch {
+                                theme: window.uiTheme
                                 checked: window.modelManager.performanceStatsVisible
                                 onToggled: window.modelManager.setPerformanceStatsVisible(checked)
                             }
@@ -280,89 +268,87 @@ PolishedMain {
                     Rectangle {
                         Layout.fillWidth: true
                         Layout.preferredHeight: 1
-                        Layout.leftMargin: 18
-                        Layout.rightMargin: 18
-                        Layout.topMargin: 4
-                        color: window.border
+                        Layout.leftMargin: window.uiTheme.spaceXl
+                        Layout.rightMargin: window.uiTheme.spaceXl
+                        color: window.uiTheme.border
                     }
 
                     Text {
-                        Layout.leftMargin: 18
+                        Layout.leftMargin: window.uiTheme.spaceXl
                         text: "SAM 2.1 models"
-                        color: window.text
-                        font.family: "Segoe UI Variable Display"
+                        color: window.uiTheme.text
+                        font.family: window.uiTheme.displayFontFamily
                         font.pixelSize: 15
                         font.weight: Font.DemiBold
                     }
                     Text {
                         Layout.fillWidth: true
-                        Layout.leftMargin: 18
-                        Layout.rightMargin: 18
+                        Layout.leftMargin: window.uiTheme.spaceXl
+                        Layout.rightMargin: window.uiTheme.spaceXl
                         text: "Install only the selection models you want to keep locally. The selected default is used for new sessions."
-                        color: window.secondary
-                        font.family: "Segoe UI Variable Text"
+                        color: window.uiTheme.textSecondary
+                        font.family: window.uiTheme.fontFamily
                         font.pixelSize: 10
                         wrapMode: Text.WordWrap
                     }
 
                     Repeater {
                         model: window.modelManager.models
-                        delegate: Rectangle {
+                        delegate: GlassPanel {
                             id: modelCard
                             required property var modelData
                             Layout.fillWidth: true
-                            Layout.leftMargin: 18
-                            Layout.rightMargin: 18
-                            Layout.preferredHeight: 86
-                            radius: 8
-                            color: window.panel2
-                            border.width: 1
-                            border.color: modelCard.modelData.selected ? window.accent : window.border
-
+                            Layout.leftMargin: window.uiTheme.spaceXl
+                            Layout.rightMargin: window.uiTheme.spaceXl
+                            Layout.preferredHeight: 92
+                            theme: window.uiTheme
+                            strong: true
+                            border.color: modelCard.modelData.selected ? window.uiTheme.accent : window.uiTheme.border
                             RowLayout {
                                 anchors.fill: parent
-                                anchors.margins: 12
-                                spacing: 10
+                                anchors.margins: window.uiTheme.spaceMd
+                                spacing: window.uiTheme.spaceMd
                                 ColumnLayout {
                                     Layout.fillWidth: true
                                     spacing: 2
                                     RowLayout {
                                         Text {
                                             text: modelCard.modelData.name
-                                            color: window.text
-                                            font.family: "Segoe UI Variable Text"
+                                            color: window.uiTheme.text
+                                            font.family: window.uiTheme.fontFamily
                                             font.pixelSize: 12
                                             font.weight: Font.DemiBold
                                         }
-                                        Text {
-                                            text: modelCard.modelData.selected ? "Default" : modelCard.modelData.status
-                                            color: modelCard.modelData.selected ? window.accent : modelCard.modelData.installed ? window.success : window.muted
-                                            font.family: "Segoe UI Variable Text"
-                                            font.pixelSize: 9
+                                        StatusPill {
+                                            theme: window.uiTheme
+                                            label: modelCard.modelData.selected ? "Default" : modelCard.modelData.status
+                                            dotColor: modelCard.modelData.selected ? window.uiTheme.accent : modelCard.modelData.installed ? window.uiTheme.success : window.uiTheme.textMuted
                                         }
                                     }
                                     Text {
                                         Layout.fillWidth: true
                                         text: modelCard.modelData.description
-                                        color: window.secondary
-                                        font.family: "Segoe UI Variable Text"
+                                        color: window.uiTheme.textSecondary
+                                        font.family: window.uiTheme.fontFamily
                                         font.pixelSize: 9
                                         elide: Text.ElideRight
                                     }
                                     Text {
                                         text: "~" + modelCard.modelData.downloadMb + " MB  ·  " + modelCard.modelData.minimumVramGb + " GB VRAM recommended"
-                                        color: window.muted
-                                        font.family: "Segoe UI Variable Text"
+                                        color: window.uiTheme.textMuted
+                                        font.family: window.uiTheme.fontFamily
                                         font.pixelSize: 9
                                     }
                                 }
-                                SettingsActionButton {
+                                RotoButton {
+                                    theme: window.uiTheme
                                     visible: modelCard.modelData.installed && !modelCard.modelData.selected
                                     text: "Set default"
                                     enabled: !window.modelManager.busy && !window.appController.busy
                                     onClicked: window.modelManager.setDefaultModel(modelCard.modelData.id)
                                 }
-                                SettingsActionButton {
+                                RotoButton {
+                                    theme: window.uiTheme
                                     text: modelCard.modelData.installed ? "Remove" : "Download"
                                     dangerStyle: modelCard.modelData.installed
                                     enabled: !window.modelManager.busy && !window.appController.busy
@@ -380,85 +366,79 @@ PolishedMain {
                     Rectangle {
                         Layout.fillWidth: true
                         Layout.preferredHeight: 1
-                        Layout.leftMargin: 18
-                        Layout.rightMargin: 18
-                        Layout.topMargin: 4
-                        color: window.border
+                        Layout.leftMargin: window.uiTheme.spaceXl
+                        Layout.rightMargin: window.uiTheme.spaceXl
+                        color: window.uiTheme.border
                     }
                     Text {
-                        Layout.leftMargin: 18
+                        Layout.leftMargin: window.uiTheme.spaceXl
                         text: "Object removal backends"
-                        color: window.text
-                        font.family: "Segoe UI Variable Display"
+                        color: window.uiTheme.text
+                        font.family: window.uiTheme.displayFontFamily
                         font.pixelSize: 15
                         font.weight: Font.DemiBold
                     }
                     Text {
                         Layout.fillWidth: true
-                        Layout.leftMargin: 18
-                        Layout.rightMargin: 18
-                        text: "Temporal Fill is built in. FGT++ and SVOR run in isolated local Python environments so their older/heavier dependencies do not affect OpenRoto or Resolve."
-                        color: window.secondary
-                        font.family: "Segoe UI Variable Text"
+                        Layout.leftMargin: window.uiTheme.spaceXl
+                        Layout.rightMargin: window.uiTheme.spaceXl
+                        text: "Temporal Fill is built in. Optional backends run in isolated local environments so they do not alter OpenRoto or Resolve dependencies."
+                        color: window.uiTheme.textSecondary
+                        font.family: window.uiTheme.fontFamily
                         font.pixelSize: 10
                         wrapMode: Text.WordWrap
                     }
                     Repeater {
                         model: window.modelManager.removalBackends
-                        delegate: Rectangle {
+                        delegate: GlassPanel {
                             id: backendCard
                             required property var modelData
                             Layout.fillWidth: true
-                            Layout.leftMargin: 18
-                            Layout.rightMargin: 18
-                            Layout.preferredHeight: 82
-                            radius: 8
-                            color: window.panel2
-                            border.width: 1
-                            border.color: window.border
+                            Layout.leftMargin: window.uiTheme.spaceXl
+                            Layout.rightMargin: window.uiTheme.spaceXl
+                            Layout.preferredHeight: 84
+                            theme: window.uiTheme
+                            strong: true
                             ColumnLayout {
                                 anchors.fill: parent
-                                anchors.margins: 11
+                                anchors.margins: window.uiTheme.spaceMd
                                 spacing: 2
                                 RowLayout {
                                     Layout.fillWidth: true
                                     Text {
                                         text: backendCard.modelData.display_name
-                                        color: window.text
-                                        font.family: "Segoe UI Variable Text"
+                                        color: window.uiTheme.text
+                                        font.family: window.uiTheme.fontFamily
                                         font.pixelSize: 12
                                         font.weight: Font.DemiBold
                                     }
-                                    Text {
-                                        text: backendCard.modelData.status
-                                        color: backendCard.modelData.available ? window.success : window.warning
-                                        font.family: "Segoe UI Variable Text"
-                                        font.pixelSize: 9
+                                    StatusPill {
+                                        theme: window.uiTheme
+                                        label: backendCard.modelData.status
+                                        dotColor: backendCard.modelData.available ? window.uiTheme.success : window.uiTheme.warning
                                     }
                                     Item { Layout.fillWidth: true }
                                     Text {
                                         text: backendCard.modelData.license
-                                        color: window.muted
-                                        font.family: "Segoe UI Variable Text"
+                                        color: window.uiTheme.textMuted
+                                        font.family: window.uiTheme.fontFamily
                                         font.pixelSize: 9
                                     }
                                 }
                                 Text {
                                     Layout.fillWidth: true
                                     text: backendCard.modelData.quality + " quality  ·  " + backendCard.modelData.speed + "  ·  " + backendCard.modelData.vram
-                                    color: window.secondary
-                                    font.family: "Segoe UI Variable Text"
+                                    color: window.uiTheme.textSecondary
+                                    font.family: window.uiTheme.fontFamily
                                     font.pixelSize: 9
                                     elide: Text.ElideRight
                                 }
                                 Text {
                                     Layout.fillWidth: true
                                     visible: backendCard.modelData.id !== "temporal"
-                                    text: backendCard.modelData.available
-                                        ? backendCard.modelData.root
-                                        : "Configure " + backendCard.modelData.python_env + " and " + backendCard.modelData.root_env
-                                    color: window.muted
-                                    font.family: "Cascadia Mono"
+                                    text: backendCard.modelData.available ? backendCard.modelData.root : "Configure " + backendCard.modelData.python_env + " and " + backendCard.modelData.root_env
+                                    color: window.uiTheme.textMuted
+                                    font.family: window.uiTheme.monoFontFamily
                                     font.pixelSize: 8
                                     elide: Text.ElideMiddle
                                 }
@@ -469,51 +449,57 @@ PolishedMain {
                     Rectangle {
                         Layout.fillWidth: true
                         Layout.preferredHeight: 1
-                        Layout.leftMargin: 18
-                        Layout.rightMargin: 18
-                        Layout.topMargin: 4
-                        color: window.border
+                        Layout.leftMargin: window.uiTheme.spaceXl
+                        Layout.rightMargin: window.uiTheme.spaceXl
+                        color: window.uiTheme.border
                     }
                     Text {
-                        Layout.leftMargin: 18
+                        Layout.leftMargin: window.uiTheme.spaceXl
                         text: "System"
-                        color: window.text
-                        font.family: "Segoe UI Variable Display"
+                        color: window.uiTheme.text
+                        font.family: window.uiTheme.displayFontFamily
                         font.pixelSize: 15
                         font.weight: Font.DemiBold
                     }
-                    Text {
+                    GlassPanel {
                         Layout.fillWidth: true
-                        Layout.leftMargin: 18
-                        Layout.rightMargin: 18
-                        text: window.appController.computeDevice + "\n" + window.appController.computeDetail
-                        color: window.secondary
-                        font.family: "Segoe UI Variable Text"
-                        font.pixelSize: 10
-                        wrapMode: Text.WordWrap
+                        Layout.leftMargin: window.uiTheme.spaceXl
+                        Layout.rightMargin: window.uiTheme.spaceXl
+                        Layout.preferredHeight: 116
+                        theme: window.uiTheme
+                        strong: true
+                        ColumnLayout {
+                            anchors.fill: parent
+                            anchors.margins: window.uiTheme.spaceMd
+                            spacing: 4
+                            Text {
+                                Layout.fillWidth: true
+                                text: window.appController.computeDevice + "\n" + window.appController.computeDetail
+                                color: window.uiTheme.textSecondary
+                                font.family: window.uiTheme.fontFamily
+                                font.pixelSize: 10
+                                wrapMode: Text.WordWrap
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                text: "Model cache: " + window.modelManager.cachePath
+                                color: window.uiTheme.textMuted
+                                font.family: window.uiTheme.monoFontFamily
+                                font.pixelSize: 9
+                                wrapMode: Text.WrapAnywhere
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                visible: window.modelManager.lastError.length > 0
+                                text: window.modelManager.lastError
+                                color: window.uiTheme.danger
+                                font.family: window.uiTheme.fontFamily
+                                font.pixelSize: 10
+                                wrapMode: Text.WordWrap
+                            }
+                        }
                     }
-                    Text {
-                        Layout.fillWidth: true
-                        Layout.leftMargin: 18
-                        Layout.rightMargin: 18
-                        text: "Model cache: " + window.modelManager.cachePath
-                        color: window.muted
-                        font.family: "Segoe UI Variable Text"
-                        font.pixelSize: 9
-                        wrapMode: Text.WrapAnywhere
-                    }
-                    Text {
-                        Layout.fillWidth: true
-                        Layout.leftMargin: 18
-                        Layout.rightMargin: 18
-                        visible: window.modelManager.lastError.length > 0
-                        text: window.modelManager.lastError
-                        color: window.danger
-                        font.family: "Segoe UI Variable Text"
-                        font.pixelSize: 10
-                        wrapMode: Text.WordWrap
-                    }
-                    Item { Layout.preferredHeight: 14 }
+                    Item { Layout.preferredHeight: window.uiTheme.spaceLg }
                 }
             }
         }

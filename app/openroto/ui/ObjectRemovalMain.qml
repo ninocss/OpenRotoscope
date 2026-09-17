@@ -8,410 +8,391 @@ TimedMain {
     id: window
     required property var removalController
 
-    component ModeButton: Button {
-        id: control
-        property bool active: false
-        implicitWidth: 106
-        implicitHeight: 30
-        font.family: "Segoe UI Variable Text"
-        font.pixelSize: 11
-        font.weight: active ? Font.DemiBold : Font.Normal
-        contentItem: Text {
-            text: control.text
-            color: control.active ? window.text : window.secondary
-            font: control.font
-            horizontalAlignment: Text.AlignHCenter
-            verticalAlignment: Text.AlignVCenter
-        }
-        background: Rectangle {
-            radius: 6
-            color: control.active ? window.accentSoft : control.hovered ? (window.dark ? "#28FFFFFF" : "#10000000") : "transparent"
-            border.width: control.active ? 1 : 0
-            border.color: window.accent
-        }
-    }
+    workflowSwitcherComponent: workflowSwitcher
+    customSidePanelComponent: window.removalController.workflowMode === "remove" ? removalPanel : null
+    viewerTitle: window.removalController.workflowMode === "remove" ? "Removal viewer" : "Viewer"
+    viewerFrameSource: window.removalController.workflowMode === "remove"
+        && window.removalController.viewerMode === "removed"
+        && window.removalController.ready
+        ? window.removalController.currentRemovalUrl
+        : window.appController.currentFrameUrl
+    maskOverlayEnabled: window.removalController.workflowMode === "rotoscope"
+        || window.removalController.viewerMode === "mask"
+    selectionPointsVisible: window.removalController.workflowMode === "rotoscope"
+        || window.removalController.viewerMode !== "removed"
+    selectionEnabled: window.removalController.workflowMode === "rotoscope"
+        || window.removalController.viewerMode !== "removed"
 
-    Rectangle {
-        parent: window.contentItem
-        z: 1200
-        anchors.top: parent.top
-        anchors.topMargin: 21
-        anchors.horizontalCenter: parent.horizontalCenter
-        width: 226
-        height: 34
-        radius: 8
-        color: window.dark ? "#B82A2A2A" : "#DFFFFFFF"
-        border.width: 1
-        border.color: window.border
-
-        Row {
-            anchors.centerIn: parent
-            spacing: 4
-            ModeButton {
-                text: "Rotoscope"
-                active: window.removalController.workflowMode === "rotoscope"
-                onClicked: window.removalController.setWorkflowMode("rotoscope")
-            }
-            ModeButton {
-                text: "Remove"
-                active: window.removalController.workflowMode === "remove"
-                onClicked: window.removalController.setWorkflowMode("remove")
-            }
-        }
-    }
-
-    Image {
-        parent: window.contentItem
-        z: 850
-        anchors.left: parent.left
-        anchors.leftMargin: 19
-        anchors.right: parent.right
-        anchors.rightMargin: 329
-        anchors.top: parent.top
-        anchors.topMargin: 113
-        anchors.bottom: parent.bottom
-        anchors.bottomMargin: 84
-        visible: window.removalController.workflowMode === "remove"
-            && window.removalController.viewerMode !== "mask"
-            && (window.removalController.viewerMode === "original" || window.removalController.ready)
-        source: window.removalController.viewerMode === "removed"
-            ? window.removalController.currentRemovalUrl
-            : window.appController.currentFrameUrl
-        fillMode: Image.PreserveAspectFit
-        asynchronous: true
-        cache: window.removalController.viewerMode === "original"
-        smooth: true
-        Rectangle {
-            anchors.fill: parent
-            color: "transparent"
-            border.width: 1
-            border.color: window.border
-        }
-    }
-
-    Rectangle {
-        parent: window.contentItem
-        z: 1100
-        visible: window.removalController.workflowMode === "remove"
-        anchors.top: parent.top
-        anchors.topMargin: 70
-        anchors.right: parent.right
-        anchors.rightMargin: 10
-        anchors.bottom: parent.bottom
-        anchors.bottomMargin: 10
-        width: 310
-        radius: 8
-        color: window.panel
-        border.width: 1
-        border.color: window.border
-
-        ColumnLayout {
-            anchors.fill: parent
-            spacing: 0
-
+    Component {
+        id: workflowSwitcher
+        GlassPanel {
+            width: window.compactMode ? 196 : 236
+            height: window.compactMode ? 50 : 38
+            radius: height / 2
+            theme: window.uiTheme
+            strong: true
             RowLayout {
-                Layout.fillWidth: true
-                Layout.preferredHeight: 44
-                Layout.leftMargin: 14
-                Layout.rightMargin: 12
-                Text {
+                anchors.fill: parent
+                anchors.margins: 3
+                spacing: 3
+                RotoButton {
                     Layout.fillWidth: true
-                    text: "Object removal"
-                    color: window.text
-                    font.family: "Segoe UI Variable Display"
-                    font.pixelSize: 15
-                    font.weight: Font.DemiBold
+                    Layout.fillHeight: true
+                    theme: window.uiTheme
+                    text: "Rotoscope"
+                    selected: window.removalController.workflowMode === "rotoscope"
+                    quiet: !selected
+                    toolTip: "Create and refine a tracked matte."
+                    onClicked: window.removalController.setWorkflowMode("rotoscope")
                 }
-                Text {
-                    text: window.removalController.ready ? "Ready" : window.appController.trackingReady ? "Tracked" : window.appController.hasPrompts ? "Needs track" : "Select"
-                    color: window.removalController.ready ? window.success : window.appController.hasPrompts ? window.accent : window.muted
-                    font.family: "Segoe UI Variable Text"
-                    font.pixelSize: 10
-                    font.weight: Font.DemiBold
+                RotoButton {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    theme: window.uiTheme
+                    text: "Remove"
+                    selected: window.removalController.workflowMode === "remove"
+                    quiet: !selected
+                    toolTip: "Track an object, reconstruct its background, then apply the result in Resolve."
+                    onClicked: window.removalController.setWorkflowMode("remove")
                 }
             }
-            Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: window.border }
+        }
+    }
 
-            ScrollView {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                clip: true
-                contentWidth: availableWidth
+    Component {
+        id: removalPanel
+        GlassPanel {
+            theme: window.uiTheme
+            ColumnLayout {
+                anchors.fill: parent
+                spacing: 0
 
-                ColumnLayout {
-                    width: parent.width
-                    spacing: 8
-                    Item { Layout.preferredHeight: 4 }
-
+                RowLayout {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 48
+                    Layout.leftMargin: window.uiTheme.spaceLg
+                    Layout.rightMargin: window.uiTheme.spaceMd
                     Text {
-                        Layout.leftMargin: 14
-                        text: "SELECT OBJECT"
-                        color: window.muted
-                        font.family: "Segoe UI Variable Text"
-                        font.pixelSize: 10
+                        Layout.fillWidth: true
+                        text: "Object removal"
+                        color: window.uiTheme.text
+                        font.family: window.uiTheme.displayFontFamily
+                        font.pixelSize: 15
                         font.weight: Font.DemiBold
-                        font.letterSpacing: 0.8
                     }
-                    Text {
-                        Layout.fillWidth: true
-                        Layout.leftMargin: 14
-                        Layout.rightMargin: 14
-                        text: "Use the same Subject and Exclude points as Rotoscope. Removal always tracks both directions so every output frame has a mask."
-                        color: window.secondary
-                        font.family: "Segoe UI Variable Text"
-                        font.pixelSize: 11
-                        wrapMode: Text.WordWrap
+                    StatusPill {
+                        theme: window.uiTheme
+                        label: window.removalController.ready ? "Ready"
+                            : window.appController.trackingReady ? "Tracked"
+                            : window.appController.hasPrompts ? "Needs track" : "Select"
+                        dotColor: window.removalController.ready ? window.uiTheme.success
+                            : window.appController.hasPrompts ? window.uiTheme.accent : window.uiTheme.textMuted
                     }
+                }
+                Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: window.uiTheme.border }
 
-                    ComboBox {
-                        id: removeModelBox
-                        Layout.fillWidth: true
-                        Layout.leftMargin: 14
-                        Layout.rightMargin: 14
-                        model: ["Fast", "Balanced", "High"]
-                        currentIndex: window.appController.modelPreset === "fast" ? 0 : window.appController.modelPreset === "high" ? 2 : 1
-                        enabled: !window.blocked
-                        onActivated: index => window.appController.setModelPreset(index === 0 ? "fast" : index === 2 ? "high" : "balanced")
-                        background: Rectangle {
-                            radius: 6
-                            color: window.panel2
-                            border.width: 1
-                            border.color: removeModelBox.visualFocus ? window.accent : window.strongBorder
+                ScrollView {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    clip: true
+                    contentWidth: availableWidth
+                    ColumnLayout {
+                        width: parent.width
+                        spacing: window.uiTheme.spaceSm
+                        Item { Layout.preferredHeight: window.uiTheme.spaceXs }
+
+                        Text {
+                            Layout.leftMargin: window.uiTheme.spaceLg
+                            text: "SELECT OBJECT"
+                            color: window.uiTheme.textMuted
+                            font.family: window.uiTheme.fontFamily
+                            font.pixelSize: 10
+                            font.weight: Font.DemiBold
+                            font.letterSpacing: 0.7
                         }
-                        contentItem: Text {
-                            leftPadding: 10
-                            text: removeModelBox.displayText
-                            color: window.text
-                            font.family: "Segoe UI Variable Text"
+                        Text {
+                            Layout.fillWidth: true
+                            Layout.leftMargin: window.uiTheme.spaceLg
+                            Layout.rightMargin: window.uiTheme.spaceLg
+                            text: "Use Subject and Exclude points in the viewer. Removal tracks both directions so every output frame has a mask."
+                            color: window.uiTheme.textSecondary
+                            font.family: window.uiTheme.fontFamily
                             font.pixelSize: 11
-                            verticalAlignment: Text.AlignVCenter
+                            wrapMode: Text.WordWrap
                         }
-                    }
-
-                    Button {
-                        Layout.fillWidth: true
-                        Layout.leftMargin: 14
-                        Layout.rightMargin: 14
-                        implicitHeight: 34
-                        text: window.appController.trackingReady ? "Track again" : "Track object"
-                        enabled: window.appController.hasPrompts && !window.blocked
-                        onClicked: {
-                            window.appController.setTrackingDirection("both")
-                            window.appController.track()
+                        RotoComboBox {
+                            Layout.fillWidth: true
+                            Layout.leftMargin: window.uiTheme.spaceLg
+                            Layout.rightMargin: window.uiTheme.spaceLg
+                            theme: window.uiTheme
+                            model: ["Fast", "Balanced", "High"]
+                            currentIndex: window.appController.modelPreset === "fast" ? 0 : window.appController.modelPreset === "high" ? 2 : 1
+                            enabled: !window.blocked
+                            onActivated: index => window.appController.setModelPreset(index === 0 ? "fast" : index === 2 ? "high" : "balanced")
                         }
-                    }
-
-                    Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: window.border; Layout.topMargin: 5 }
-                    Text {
-                        Layout.leftMargin: 14
-                        text: "BACKGROUND FILL"
-                        color: window.muted
-                        font.family: "Segoe UI Variable Text"
-                        font.pixelSize: 10
-                        font.weight: Font.DemiBold
-                        font.letterSpacing: 0.8
-                    }
-
-                    ComboBox {
-                        id: backendBox
-                        Layout.fillWidth: true
-                        Layout.leftMargin: 14
-                        Layout.rightMargin: 14
-                        model: ["Temporal Fill", "FGT++", "SVOR"]
-                        currentIndex: window.removalController.backend === "fgt" ? 1 : window.removalController.backend === "svor" ? 2 : 0
-                        enabled: !window.blocked
-                        onActivated: index => window.removalController.setBackend(index === 1 ? "fgt" : index === 2 ? "svor" : "temporal")
-                        background: Rectangle {
-                            radius: 6
-                            color: window.panel2
-                            border.width: 1
-                            border.color: backendBox.visualFocus ? window.accent : window.strongBorder
-                        }
-                        contentItem: Text {
-                            leftPadding: 10
-                            text: backendBox.displayText
-                            color: window.text
-                            font.family: "Segoe UI Variable Text"
-                            font.pixelSize: 11
-                            verticalAlignment: Text.AlignVCenter
-                        }
-                    }
-
-                    Text {
-                        Layout.fillWidth: true
-                        Layout.leftMargin: 14
-                        Layout.rightMargin: 14
-                        text: window.removalController.backendInfo.description
-                        color: window.secondary
-                        font.family: "Segoe UI Variable Text"
-                        font.pixelSize: 10
-                        wrapMode: Text.WordWrap
-                    }
-                    Text {
-                        Layout.fillWidth: true
-                        Layout.leftMargin: 14
-                        Layout.rightMargin: 14
-                        text: window.removalController.backendInfo.status + "  ·  "
-                            + window.removalController.backendInfo.license + "  ·  "
-                            + window.removalController.backendInfo.vram
-                        color: window.removalController.backendInfo.available ? window.success : window.warning
-                        font.family: "Segoe UI Variable Text"
-                        font.pixelSize: 9
-                        wrapMode: Text.WordWrap
-                    }
-
-                    RowLayout {
-                        Layout.fillWidth: true
-                        Layout.leftMargin: 14
-                        Layout.rightMargin: 14
-                        Text { text: "Mask padding"; color: window.text; font.family: "Segoe UI Variable Text"; font.pixelSize: 11; Layout.fillWidth: true }
-                        Text { text: window.removalController.padding + " px"; color: window.secondary; font.family: "Segoe UI Variable Text"; font.pixelSize: 10 }
-                    }
-                    Slider {
-                        Layout.fillWidth: true
-                        Layout.leftMargin: 14
-                        Layout.rightMargin: 14
-                        from: 0; to: 32; stepSize: 1
-                        value: window.removalController.padding
-                        enabled: !window.blocked
-                        onMoved: window.removalController.setPadding(Math.round(value))
-                    }
-
-                    RowLayout {
-                        Layout.fillWidth: true
-                        Layout.leftMargin: 14
-                        Layout.rightMargin: 14
-                        Text { text: "Edge feather"; color: window.text; font.family: "Segoe UI Variable Text"; font.pixelSize: 11; Layout.fillWidth: true }
-                        Text { text: window.removalController.feather.toFixed(1) + " px"; color: window.secondary; font.family: "Segoe UI Variable Text"; font.pixelSize: 10 }
-                    }
-                    Slider {
-                        Layout.fillWidth: true
-                        Layout.leftMargin: 14
-                        Layout.rightMargin: 14
-                        from: 0; to: 16; stepSize: 0.5
-                        value: window.removalController.feather
-                        enabled: !window.blocked
-                        onMoved: window.removalController.setFeather(value)
-                    }
-
-                    RowLayout {
-                        visible: window.removalController.backend === "temporal"
-                        Layout.fillWidth: true
-                        Layout.leftMargin: 14
-                        Layout.rightMargin: 14
-                        Text { text: "Temporal search"; color: window.text; font.family: "Segoe UI Variable Text"; font.pixelSize: 11; Layout.fillWidth: true }
-                        Text { text: "±" + window.removalController.temporalRadius + " f"; color: window.secondary; font.family: "Segoe UI Variable Text"; font.pixelSize: 10 }
-                    }
-                    Slider {
-                        visible: window.removalController.backend === "temporal"
-                        Layout.fillWidth: true
-                        Layout.leftMargin: 14
-                        Layout.rightMargin: 14
-                        from: 2; to: 60; stepSize: 1
-                        value: window.removalController.temporalRadius
-                        enabled: !window.blocked
-                        onMoved: window.removalController.setTemporalRadius(Math.round(value))
-                    }
-
-                    Button {
-                        Layout.fillWidth: true
-                        Layout.leftMargin: 14
-                        Layout.rightMargin: 14
-                        implicitHeight: 34
-                        text: window.removalController.ready ? "Rebuild preview" : "Preview removal"
-                        enabled: window.appController.hasPrompts && !window.blocked && window.removalController.backendInfo.available
-                        onClicked: window.removalController.preview()
-                    }
-
-                    RowLayout {
-                        Layout.fillWidth: true
-                        Layout.leftMargin: 14
-                        Layout.rightMargin: 14
-                        spacing: 4
-                        Repeater {
-                            model: [
-                                {"label": "Original", "value": "original"},
-                                {"label": "Mask", "value": "mask"},
-                                {"label": "Removed", "value": "removed"}
-                            ]
-                            delegate: Button {
-                                required property var modelData
-                                Layout.fillWidth: true
-                                implicitHeight: 30
-                                text: modelData.label
-                                checkable: true
-                                checked: window.removalController.viewerMode === modelData.value
-                                enabled: modelData.value !== "removed" || window.removalController.ready
-                                onClicked: window.removalController.setViewerMode(modelData.value)
+                        RotoButton {
+                            Layout.fillWidth: true
+                            Layout.leftMargin: window.uiTheme.spaceLg
+                            Layout.rightMargin: window.uiTheme.spaceLg
+                            theme: window.uiTheme
+                            primary: window.appController.hasPrompts && !window.appController.trackingReady
+                            text: window.appController.trackingReady ? "Track again" : "Track object"
+                            enabled: window.appController.hasPrompts && !window.blocked
+                            toolTip: window.appController.hasPrompts ? "Track the selected object through the full clip." : "Add at least one Subject point first."
+                            onClicked: {
+                                window.appController.setTrackingDirection("both")
+                                window.appController.track()
                             }
                         }
-                    }
 
-                    Rectangle {
-                        visible: window.modelManager.performanceStatsVisible
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 1
-                        color: window.border
-                        Layout.topMargin: 5
-                    }
-                    Text {
-                        visible: window.modelManager.performanceStatsVisible
-                        Layout.leftMargin: 14
-                        text: "REMOVAL PERFORMANCE"
-                        color: window.muted
-                        font.family: "Segoe UI Variable Text"
-                        font.pixelSize: 10
-                        font.weight: Font.DemiBold
-                        font.letterSpacing: 0.8
-                    }
-                    Repeater {
-                        model: window.modelManager.performanceStatsVisible ? window.removalController.timings : []
-                        delegate: RowLayout {
-                            required property var modelData
+                        Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; Layout.topMargin: window.uiTheme.spaceXs; color: window.uiTheme.border }
+                        RowLayout {
                             Layout.fillWidth: true
-                            Layout.leftMargin: 14
-                            Layout.rightMargin: 14
-                            Text { text: modelData.label; color: window.secondary; font.family: "Segoe UI Variable Text"; font.pixelSize: 10; Layout.fillWidth: true }
-                            Text { text: modelData.value; color: window.text; font.family: "Cascadia Mono"; font.pixelSize: 10 }
+                            Layout.leftMargin: window.uiTheme.spaceLg
+                            Layout.rightMargin: window.uiTheme.spaceMd
+                            Text {
+                                Layout.fillWidth: true
+                                text: "BACKGROUND FILL"
+                                color: window.uiTheme.textMuted
+                                font.family: window.uiTheme.fontFamily
+                                font.pixelSize: 10
+                                font.weight: Font.DemiBold
+                                font.letterSpacing: 0.7
+                            }
+                            RotoButton {
+                                theme: window.uiTheme
+                                width: window.compactMode ? 44 : 30; height: window.compactMode ? 44 : 30; leftPadding: 0; rightPadding: 0
+                                quiet: true
+                                text: "ⓘ"
+                                font.pixelSize: 13
+                                toolTip: "Temporal Fill is built in. Optional backends may require separate local environments."
+                            }
                         }
-                    }
-                    Item { Layout.preferredHeight: 8 }
-                }
-            }
+                        RotoComboBox {
+                            Layout.fillWidth: true
+                            Layout.leftMargin: window.uiTheme.spaceLg
+                            Layout.rightMargin: window.uiTheme.spaceLg
+                            theme: window.uiTheme
+                            model: ["Temporal Fill", "FGT++", "SVOR"]
+                            currentIndex: window.removalController.backend === "fgt" ? 1 : window.removalController.backend === "svor" ? 2 : 0
+                            enabled: !window.blocked
+                            onActivated: index => window.removalController.setBackend(index === 1 ? "fgt" : index === 2 ? "svor" : "temporal")
+                        }
+                        GlassPanel {
+                            Layout.fillWidth: true
+                            Layout.leftMargin: window.uiTheme.spaceLg
+                            Layout.rightMargin: window.uiTheme.spaceLg
+                            implicitHeight: backendInfo.implicitHeight + window.uiTheme.spaceMd * 2
+                            theme: window.uiTheme
+                            strong: true
+                            ColumnLayout {
+                                id: backendInfo
+                                anchors.fill: parent
+                                anchors.margins: window.uiTheme.spaceMd
+                                spacing: 3
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: window.removalController.backendInfo.description
+                                    color: window.uiTheme.textSecondary
+                                    font.family: window.uiTheme.fontFamily
+                                    font.pixelSize: 10
+                                    wrapMode: Text.WordWrap
+                                }
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: window.removalController.backendInfo.status + "  ·  "
+                                        + window.removalController.backendInfo.license + "  ·  "
+                                        + window.removalController.backendInfo.vram
+                                    color: window.removalController.backendInfo.available ? window.uiTheme.success : window.uiTheme.warning
+                                    font.family: window.uiTheme.fontFamily
+                                    font.pixelSize: 9
+                                    wrapMode: Text.WordWrap
+                                }
+                            }
+                        }
 
-            Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: window.border }
-            ColumnLayout {
-                Layout.fillWidth: true
-                Layout.leftMargin: 12
-                Layout.rightMargin: 12
-                Layout.topMargin: 9
-                Layout.bottomMargin: 11
-                spacing: 6
-                Text {
-                    Layout.fillWidth: true
-                    text: window.appController.status
-                    color: window.text
-                    font.family: "Segoe UI Variable Text"
-                    font.pixelSize: 11
-                    font.weight: Font.DemiBold
-                    horizontalAlignment: Text.AlignHCenter
-                    elide: Text.ElideRight
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Layout.leftMargin: window.uiTheme.spaceLg
+                            Layout.rightMargin: window.uiTheme.spaceLg
+                            Text { text: "Mask padding"; color: window.uiTheme.text; font.family: window.uiTheme.fontFamily; font.pixelSize: 11; Layout.fillWidth: true }
+                            Text { text: window.removalController.padding + " px"; color: window.uiTheme.textSecondary; font.family: window.uiTheme.monoFontFamily; font.pixelSize: 10 }
+                        }
+                        RotoSlider {
+                            Layout.fillWidth: true
+                            Layout.leftMargin: window.uiTheme.spaceLg
+                            Layout.rightMargin: window.uiTheme.spaceLg
+                            theme: window.uiTheme
+                            from: 0; to: 32; stepSize: 1
+                            value: window.removalController.padding
+                            enabled: !window.blocked
+                            toolTip: Math.round(value) + " px padding"
+                            onMoved: window.removalController.setPadding(Math.round(value))
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Layout.leftMargin: window.uiTheme.spaceLg
+                            Layout.rightMargin: window.uiTheme.spaceLg
+                            Text { text: "Edge feather"; color: window.uiTheme.text; font.family: window.uiTheme.fontFamily; font.pixelSize: 11; Layout.fillWidth: true }
+                            Text { text: window.removalController.feather.toFixed(1) + " px"; color: window.uiTheme.textSecondary; font.family: window.uiTheme.monoFontFamily; font.pixelSize: 10 }
+                        }
+                        RotoSlider {
+                            Layout.fillWidth: true
+                            Layout.leftMargin: window.uiTheme.spaceLg
+                            Layout.rightMargin: window.uiTheme.spaceLg
+                            theme: window.uiTheme
+                            from: 0; to: 16; stepSize: 0.5
+                            value: window.removalController.feather
+                            enabled: !window.blocked
+                            toolTip: value.toFixed(1) + " px feather"
+                            onMoved: window.removalController.setFeather(value)
+                        }
+
+                        RowLayout {
+                            visible: window.removalController.backend === "temporal"
+                            Layout.fillWidth: true
+                            Layout.leftMargin: window.uiTheme.spaceLg
+                            Layout.rightMargin: window.uiTheme.spaceLg
+                            Text { text: "Temporal search"; color: window.uiTheme.text; font.family: window.uiTheme.fontFamily; font.pixelSize: 11; Layout.fillWidth: true }
+                            Text { text: "±" + window.removalController.temporalRadius + " f"; color: window.uiTheme.textSecondary; font.family: window.uiTheme.monoFontFamily; font.pixelSize: 10 }
+                        }
+                        RotoSlider {
+                            visible: window.removalController.backend === "temporal"
+                            Layout.fillWidth: true
+                            Layout.leftMargin: window.uiTheme.spaceLg
+                            Layout.rightMargin: window.uiTheme.spaceLg
+                            theme: window.uiTheme
+                            from: 2; to: 60; stepSize: 1
+                            value: window.removalController.temporalRadius
+                            enabled: !window.blocked
+                            toolTip: "±" + Math.round(value) + " frames"
+                            onMoved: window.removalController.setTemporalRadius(Math.round(value))
+                        }
+
+                        RotoButton {
+                            Layout.fillWidth: true
+                            Layout.leftMargin: window.uiTheme.spaceLg
+                            Layout.rightMargin: window.uiTheme.spaceLg
+                            theme: window.uiTheme
+                            text: window.removalController.ready ? "Rebuild preview" : "Preview removal"
+                            enabled: window.appController.hasPrompts && !window.blocked && window.removalController.backendInfo.available
+                            toolTip: window.removalController.backendInfo.available
+                                ? "Build a local preview without applying anything in Resolve."
+                                : "This removal backend is not available on this system."
+                            onClicked: window.removalController.preview()
+                        }
+
+                        Text {
+                            Layout.leftMargin: window.uiTheme.spaceLg
+                            text: "VIEW"
+                            color: window.uiTheme.textMuted
+                            font.family: window.uiTheme.fontFamily
+                            font.pixelSize: 10
+                            font.weight: Font.DemiBold
+                            font.letterSpacing: 0.7
+                        }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Layout.leftMargin: window.uiTheme.spaceLg
+                            Layout.rightMargin: window.uiTheme.spaceLg
+                            spacing: window.uiTheme.spaceXs
+                            Repeater {
+                                model: [
+                                    {"label": "Original", "value": "original"},
+                                    {"label": "Mask", "value": "mask"},
+                                    {"label": "Removed", "value": "removed"}
+                                ]
+                                delegate: RotoButton {
+                                    required property var modelData
+                                    Layout.fillWidth: true
+                                    theme: window.uiTheme
+                                    text: modelData.label
+                                    selected: window.removalController.viewerMode === modelData.value
+                                    quiet: !selected
+                                    enabled: modelData.value !== "removed" || window.removalController.ready
+                                    onClicked: window.removalController.setViewerMode(modelData.value)
+                                }
+                            }
+                        }
+
+                        Rectangle {
+                            visible: window.modelManager.performanceStatsVisible
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 1
+                            Layout.topMargin: window.uiTheme.spaceXs
+                            color: window.uiTheme.border
+                        }
+                        Text {
+                            visible: window.modelManager.performanceStatsVisible
+                            Layout.leftMargin: window.uiTheme.spaceLg
+                            text: "REMOVAL PERFORMANCE"
+                            color: window.uiTheme.textMuted
+                            font.family: window.uiTheme.fontFamily
+                            font.pixelSize: 10
+                            font.weight: Font.DemiBold
+                            font.letterSpacing: 0.7
+                        }
+                        Repeater {
+                            model: window.modelManager.performanceStatsVisible ? window.removalController.timings : []
+                            delegate: RowLayout {
+                                required property var modelData
+                                Layout.fillWidth: true
+                                Layout.leftMargin: window.uiTheme.spaceLg
+                                Layout.rightMargin: window.uiTheme.spaceLg
+                                Text { text: modelData.label; color: window.uiTheme.textSecondary; font.family: window.uiTheme.fontFamily; font.pixelSize: 10; Layout.fillWidth: true }
+                                Text { text: modelData.value; color: window.uiTheme.text; font.family: window.uiTheme.monoFontFamily; font.pixelSize: 10 }
+                            }
+                        }
+                        Item { Layout.preferredHeight: window.uiTheme.spaceSm }
+                    }
                 }
-                Button {
+
+                Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: window.uiTheme.border }
+                ColumnLayout {
                     Layout.fillWidth: true
-                    implicitHeight: 34
-                    visible: window.appController.busy
-                    text: window.appController.status === "Waiting for Resolve" ? "Resolve is applying…" : "Cancel"
-                    enabled: window.appController.status !== "Waiting for Resolve"
-                    onClicked: window.removalController.cancel()
-                }
-                Button {
-                    Layout.fillWidth: true
-                    implicitHeight: 40
-                    visible: !window.appController.busy
-                    text: window.appController.trackingDirty ? "Track, Remove & Apply" : "Remove & Apply"
-                    enabled: window.appController.hasPrompts && window.appController.bridgeConnected && window.removalController.backendInfo.available
-                    onClicked: window.removalController.removeAndApply()
+                    Layout.leftMargin: window.uiTheme.spaceMd
+                    Layout.rightMargin: window.uiTheme.spaceMd
+                    Layout.topMargin: window.uiTheme.spaceSm
+                    Layout.bottomMargin: window.uiTheme.spaceMd
+                    spacing: window.uiTheme.spaceXs
+                    Text {
+                        Layout.fillWidth: true
+                        text: window.appController.status
+                        color: window.uiTheme.text
+                        font.family: window.uiTheme.fontFamily
+                        font.pixelSize: 11
+                        font.weight: Font.DemiBold
+                        horizontalAlignment: Text.AlignHCenter
+                        elide: Text.ElideRight
+                    }
+                    RotoButton {
+                        Layout.fillWidth: true
+                        theme: window.uiTheme
+                        visible: window.appController.busy
+                        dangerStyle: window.appController.status !== "Waiting for Resolve"
+                        text: window.appController.status === "Waiting for Resolve" ? "Resolve is applying…" : "Cancel operation"
+                        enabled: window.appController.status !== "Waiting for Resolve"
+                        onClicked: window.removalController.cancel()
+                    }
+                    RotoButton {
+                        Layout.fillWidth: true
+                        implicitHeight: 40
+                        theme: window.uiTheme
+                        primary: true
+                        visible: !window.appController.busy
+                        text: window.appController.trackingDirty ? "Track, Remove & Apply" : "Remove & Apply"
+                        enabled: window.appController.hasPrompts
+                            && window.appController.bridgeConnected
+                            && window.removalController.backendInfo.available
+                            && !window.blocked
+                        toolTip: !window.appController.bridgeConnected
+                            ? "Start a new session from DaVinci Resolve."
+                            : !window.removalController.backendInfo.available
+                                ? "Choose an available background-fill backend."
+                                : "Build the removal result and apply it in Resolve."
+                        onClicked: window.removalController.removeAndApply()
+                    }
                 }
             }
         }

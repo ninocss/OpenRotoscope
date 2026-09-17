@@ -30,9 +30,44 @@ jobs:
       - name: Run UI smoke test
         shell: pwsh
         run: .\.venv\Scripts\python.exe tests\run_ui_smoke.py
+      - name: Run compact accessibility smoke
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
+          .\.venv\Scripts\python.exe tests\run_ui_accessibility_smoke.py --width 900 --height 480 --mode remove
+          .\.venv\Scripts\python.exe tests\run_ui_accessibility_smoke.py --width 960 --height 500 --mode rotoscope
+      - name: Capture DPI and window layouts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
+          New-Item -ItemType Directory -Force -Path .\artifacts\ui-layout | Out-Null
+          .\.venv\Scripts\python.exe tests\run_ui_layout_smoke.py --width 900 --height 480 --scale 1.0 --mode rotoscope --theme light --output .\artifacts\ui-layout\compact-900x480-100-light.png
+          .\.venv\Scripts\python.exe tests\run_ui_layout_smoke.py --width 900 --height 480 --scale 1.5 --mode remove --theme dark --drawer --output .\artifacts\ui-layout\compact-900x480-150-remove-drawer-dark.png
+          .\.venv\Scripts\python.exe tests\run_ui_layout_smoke.py --width 960 --height 500 --scale 2.0 --mode rotoscope --theme light --drawer --output .\artifacts\ui-layout\compact-960x500-200-roto-drawer-light.png
+          .\.venv\Scripts\python.exe tests\run_ui_layout_smoke.py --width 960 --height 500 --scale 2.0 --mode rotoscope --theme light --performance --output .\artifacts\ui-layout\compact-960x500-200-performance-light.png
+          .\.venv\Scripts\python.exe tests\run_ui_layout_smoke.py --width 960 --height 500 --scale 2.0 --mode rotoscope --theme light --settings --output .\artifacts\ui-layout\compact-960x500-200-settings-light.png
+          .\.venv\Scripts\python.exe tests\run_ui_layout_smoke.py --width 1120 --height 700 --scale 1.25 --mode remove --theme dark --output .\artifacts\ui-layout\desktop-threshold-1120x700-125-remove-dark.png
+          .\.venv\Scripts\python.exe tests\run_ui_layout_smoke.py --width 1360 --height 850 --scale 1.5 --mode rotoscope --theme dark --performance --output .\artifacts\ui-layout\normal-1360x850-150-performance-dark.png
+          .\.venv\Scripts\python.exe tests\run_ui_layout_smoke.py --width 1360 --height 850 --scale 2.0 --mode remove --theme light --output .\artifacts\ui-layout\normal-1360x850-200-remove-light.png
+          .\.venv\Scripts\python.exe tests\run_ui_layout_smoke.py --width 1920 --height 1080 --scale 1.0 --mode rotoscope --theme light --output .\artifacts\ui-layout\large-1920x1080-100-light.png
+      - name: Upload UI layout captures
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-layout-captures
+          path: artifacts/ui-layout/*.png
+          if-no-files-found: error
       - name: Lint QML
         shell: pwsh
         run: |
+          .\.venv\Scripts\pyside6-qmllint.exe app\openroto\ui\RotoTheme.qml
+          .\.venv\Scripts\pyside6-qmllint.exe app\openroto\ui\GlassPanel.qml
+          .\.venv\Scripts\pyside6-qmllint.exe app\openroto\ui\RotoButton.qml
+          .\.venv\Scripts\pyside6-qmllint.exe app\openroto\ui\RotoSlider.qml
+          .\.venv\Scripts\pyside6-qmllint.exe app\openroto\ui\RotoComboBox.qml
+          .\.venv\Scripts\pyside6-qmllint.exe app\openroto\ui\RotoSwitch.qml
+          .\.venv\Scripts\pyside6-qmllint.exe app\openroto\ui\StatusPill.qml
           .\.venv\Scripts\pyside6-qmllint.exe app\openroto\ui\Main.qml
           .\.venv\Scripts\pyside6-qmllint.exe app\openroto\ui\PolishedMain.qml
           .\.venv\Scripts\pyside6-qmllint.exe app\openroto\ui\TimedMain.qml
