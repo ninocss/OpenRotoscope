@@ -181,7 +181,7 @@ ApplicationWindow {
                         spacing: theme.spaceXs
                         RotoButton {
                             theme: window.uiTheme
-                            width: 34; height: 34; leftPadding: 0; rightPadding: 0
+                            width: window.compactMode ? 44 : 34; height: window.compactMode ? 44 : 34; leftPadding: 0; rightPadding: 0
                             quiet: true
                             text: "↶"
                             font.family: "Segoe UI Symbol"; font.pixelSize: 15
@@ -191,7 +191,7 @@ ApplicationWindow {
                         }
                         RotoButton {
                             theme: window.uiTheme
-                            width: 34; height: 34; leftPadding: 0; rightPadding: 0
+                            width: window.compactMode ? 44 : 34; height: window.compactMode ? 44 : 34; leftPadding: 0; rightPadding: 0
                             quiet: true
                             text: "↷"
                             font.family: "Segoe UI Symbol"; font.pixelSize: 15
@@ -201,7 +201,7 @@ ApplicationWindow {
                         }
                         RotoButton {
                             theme: window.uiTheme
-                            width: 34; height: 34; leftPadding: 0; rightPadding: 0
+                            width: window.compactMode ? 44 : 34; height: window.compactMode ? 44 : 34; leftPadding: 0; rightPadding: 0
                             quiet: true
                             text: "⌫"
                             font.family: "Segoe UI Symbol"; font.pixelSize: 14
@@ -231,9 +231,10 @@ ApplicationWindow {
                             toolTip: window.appController.computeDevice + "\n" + window.appController.computeDetail
                         }
                         RotoButton {
+                            id: compactControlsButton
                             visible: window.compactMode
                             theme: window.uiTheme
-                            width: 34; height: 34; leftPadding: 0; rightPadding: 0
+                            width: window.compactMode ? 44 : 34; height: window.compactMode ? 44 : 34; leftPadding: 0; rightPadding: 0
                             quiet: true
                             text: "☰"
                             font.family: "Segoe UI Symbol"; font.pixelSize: 15
@@ -242,7 +243,7 @@ ApplicationWindow {
                         }
                         RotoButton {
                             theme: window.uiTheme
-                            width: 34; height: 34; leftPadding: 0; rightPadding: 0
+                            width: window.compactMode ? 44 : 34; height: window.compactMode ? 44 : 34; leftPadding: 0; rightPadding: 0
                             quiet: true
                             text: "⚙"
                             font.family: "Segoe UI Symbol"; font.pixelSize: 15
@@ -298,7 +299,7 @@ ApplicationWindow {
                             RotoButton {
                                 theme: window.uiTheme
                                 implicitWidth: 46
-                                implicitHeight: 32
+                                implicitHeight: window.compactMode ? 44 : 32
                                 text: "1:1"
                                 quiet: true
                                 toolTip: "Reset viewer zoom and position"
@@ -507,7 +508,7 @@ ApplicationWindow {
                                 spacing: theme.spaceSm
                                 RotoButton {
                                     theme: window.uiTheme
-                                    width: 34; height: 34; leftPadding: 0; rightPadding: 0
+                                    width: window.compactMode ? 44 : 34; height: window.compactMode ? 44 : 34; leftPadding: 0; rightPadding: 0
                                     quiet: true
                                     text: "‹"; font.pixelSize: 18
                                     toolTip: "Previous frame"
@@ -536,7 +537,7 @@ ApplicationWindow {
                                 }
                                 RotoButton {
                                     theme: window.uiTheme
-                                    width: 34; height: 34; leftPadding: 0; rightPadding: 0
+                                    width: window.compactMode ? 44 : 34; height: window.compactMode ? 44 : 34; leftPadding: 0; rightPadding: 0
                                     quiet: true
                                     text: "›"; font.pixelSize: 18
                                     toolTip: "Next frame"
@@ -562,10 +563,12 @@ ApplicationWindow {
 
     Drawer {
         id: controlsDrawer
+        objectName: "compactControlsDrawer"
         edge: Qt.RightEdge
         width: Math.min(380, Math.max(300, window.width * 0.86))
         height: window.height
         modal: true
+        focus: true
         interactive: window.compactMode
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
 
@@ -575,7 +578,20 @@ ApplicationWindow {
             border.color: theme.borderStrong
         }
 
-        contentItem: Item {
+        onOpened: Qt.callLater(function() { compactDrawerFocusScope.forceActiveFocus(Qt.TabFocusReason) })
+        onClosed: {
+            if (window.compactMode && compactControlsButton.visible)
+                compactControlsButton.forceActiveFocus(Qt.TabFocusReason)
+        }
+
+        contentItem: FocusScope {
+            id: compactDrawerFocusScope
+            focus: controlsDrawer.opened
+            Keys.onEscapePressed: event => {
+                controlsDrawer.close()
+                event.accepted = true
+            }
+
             Loader {
                 anchors.fill: parent
                 anchors.margins: theme.spaceSm
@@ -663,7 +679,7 @@ ApplicationWindow {
                             SectionLabel { text: "TRACKING"; Layout.fillWidth: true }
                             RotoButton {
                                 theme: window.uiTheme
-                                width: 30; height: 30; leftPadding: 0; rightPadding: 0
+                                width: window.compactMode ? 44 : 30; height: window.compactMode ? 44 : 30; leftPadding: 0; rightPadding: 0
                                 quiet: true
                                 text: "ⓘ"; font.pixelSize: 13
                                 toolTip: "Choose the SAM 2.1 model and tracking direction. Balanced is the default for most clips."

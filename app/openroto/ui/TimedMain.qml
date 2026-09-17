@@ -52,7 +52,7 @@ PolishedMain {
                 Item { Layout.fillWidth: true }
                 RotoButton {
                     theme: window.uiTheme
-                    width: 26; height: 26; leftPadding: 0; rightPadding: 0
+                    width: window.compactMode ? 44 : 26; height: window.compactMode ? 44 : 26; leftPadding: 0; rightPadding: 0
                     quiet: true
                     text: "×"
                     toolTip: "Hide performance statistics"
@@ -106,6 +106,7 @@ PolishedMain {
 
     Popup {
         id: settingsPopup
+        objectName: "settingsPopup"
         anchors.centerIn: parent
         width: Math.min(window.width - 64, 760)
         height: Math.min(window.height - 64, 650)
@@ -143,7 +144,7 @@ PolishedMain {
                 }
                 RotoButton {
                     theme: window.uiTheme
-                    width: 34; height: 34; leftPadding: 0; rightPadding: 0
+                    width: window.compactMode ? 44 : 34; height: window.compactMode ? 44 : 34; leftPadding: 0; rightPadding: 0
                     quiet: true
                     text: "×"
                     font.pixelSize: 16

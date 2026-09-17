@@ -27,8 +27,8 @@ TimedMain {
         id: workflowSwitcher
         GlassPanel {
             width: window.compactMode ? 196 : 236
-            height: 38
-            radius: 19
+            height: window.compactMode ? 50 : 38
+            radius: height / 2
             theme: window.uiTheme
             strong: true
             RowLayout {
@@ -161,7 +161,7 @@ TimedMain {
                             }
                             RotoButton {
                                 theme: window.uiTheme
-                                width: 30; height: 30; leftPadding: 0; rightPadding: 0
+                                width: window.compactMode ? 44 : 30; height: window.compactMode ? 44 : 30; leftPadding: 0; rightPadding: 0
                                 quiet: true
                                 text: "ⓘ"
                                 font.pixelSize: 13
