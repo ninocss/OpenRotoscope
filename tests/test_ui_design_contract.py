@@ -23,7 +23,7 @@ class UiDesignContractTests(unittest.TestCase):
             self.assertTrue((UI / component).exists(), component)
             self.assertIn(component, build)
 
-    def test_active_ui_uses_shared_theme_and_close_guard(self):
+    def test_active_ui_uses_shared_theme_close_guard_and_compact_mode(self):
         polished = (UI / "PolishedMain.qml").read_text(encoding="utf-8")
         timed = (UI / "TimedMain.qml").read_text(encoding="utf-8")
         removal = (UI / "ObjectRemovalMain.qml").read_text(encoding="utf-8")
@@ -35,11 +35,21 @@ class UiDesignContractTests(unittest.TestCase):
         self.assertIn("blurEnabled: true", polished)
         self.assertIn("id: closeGuard", polished)
         self.assertIn('"Close when finished"', polished)
+        self.assertIn("minimumWidth: 900", polished)
+        self.assertIn("minimumHeight: 480", polished)
+        self.assertIn("compactMode: window.width < 1120", polished)
+        self.assertIn("id: controlsDrawer", polished)
+        self.assertIn("openCompactControls", polished)
+        self.assertIn('"Subject · LMB"', polished)
+        self.assertIn('"Exclude · RMB"', polished)
+        self.assertIn('toolTip: "Open controls"', polished)
+        self.assertIn("window.compactMode ? window.width", timed)
         self.assertIn('text: "Appearance"', timed)
         self.assertIn('"Light"', timed)
         self.assertIn('"Dark"', timed)
         self.assertIn("customSidePanelComponent:", removal)
         self.assertIn("viewerFrameSource:", removal)
+        self.assertIn("window.compactMode ? 196 : 236", removal)
         self.assertIn("RotoSlider", removal)
         self.assertIn("RotoComboBox", removal)
 
@@ -54,6 +64,8 @@ class UiDesignContractTests(unittest.TestCase):
         self.assertNotIn("layer.enabled", glass)
         self.assertNotIn("layer.effect", glass)
         self.assertIn("maximumLabelWidth", status)
+        self.assertIn("property bool compact", status)
+        self.assertIn("compact ? 28", status)
         self.assertIn("Text.ElideRight", status)
 
 
