@@ -68,6 +68,21 @@ class UiDesignContractTests(unittest.TestCase):
         self.assertIn("compact ? 28", status)
         self.assertIn("Text.ElideRight", status)
 
+    def test_ci_requires_compact_dpi_drawer_captures(self):
+        workflow = (ROOT / ".github" / "workflows" / "windows-ci.yml").read_text(
+            encoding="utf-8"
+        )
+        layout_smoke = (ROOT / "tests" / "run_ui_layout_smoke.py").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn('$PSNativeCommandUseErrorActionPreference = $true', workflow)
+        self.assertIn("--width 900 --height 480 --scale 1.5", workflow)
+        self.assertIn("--width 960 --height 500 --scale 2.0", workflow)
+        self.assertIn("--drawer", workflow)
+        self.assertIn('QSettings("OpenRoto", "OpenRoto").clear()', layout_smoke)
+        self.assertIn('window.property("compactMode")', layout_smoke)
+
 
 if __name__ == "__main__":
     unittest.main()
