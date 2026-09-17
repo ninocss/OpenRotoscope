@@ -108,11 +108,12 @@ def control_for_focus(obj: QObject | None) -> QObject | None:
 
 
 def descriptor(control: QObject) -> str:
-    for name in ("toolTip", "text", "displayText"):
+    parts: list[str] = []
+    for name in ("text", "toolTip", "displayText"):
         value = control.property(name)
-        if isinstance(value, str) and value:
-            return value
-    return control.metaObject().className()
+        if isinstance(value, str) and value and value not in parts:
+            parts.append(value)
+    return " | ".join(parts) if parts else control.metaObject().className()
 
 
 def item_rect(item: QQuickItem) -> tuple[float, float, float, float]:
