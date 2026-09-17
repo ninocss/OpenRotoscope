@@ -22,8 +22,6 @@ _FGT_COMMIT = "b6b01e3fc82931e050cf4d7062f3879f70677bad"
 _SVOR_COMMIT = "df1fe23248c46477aea665c0f116fff91184f26d"
 
 _FGT_PACKAGES = (
-    "torch==1.13.1",
-    "torchvision==0.14.1",
     "numpy==1.23.5",
     "scipy==1.9.3",
     "scikit-image==0.19.3",
@@ -144,7 +142,7 @@ def _download_source(
         shutil.copytree(roots[0], destination, dirs_exist_ok=True)
 
 
-def _terminate_process_tree(process: subprocess.Popen[object]) -> None:
+def _terminate_process_tree(process: subprocess.Popen) -> None:
     if process.poll() is not None:
         return
     if os.name == "nt":
@@ -378,7 +376,16 @@ def _install_fgt_dependencies(
     log_path: Path,
     cancelled: CancelCallback | None,
 ) -> None:
-    _report(progress, 0.20, "Installing FGT++ dependencies")
+    _report(progress, 0.20, "Installing FGT++ CUDA runtime")
+    _pip_install(
+        python,
+        ("torch==1.13.1+cu117", "torchvision==0.14.1+cu117"),
+        cwd=repo,
+        log_path=log_path,
+        cancelled=cancelled,
+        extra=("--extra-index-url", "https://download.pytorch.org/whl/cu117"),
+    )
+    _report(progress, 0.36, "Installing FGT++ dependencies")
     _pip_install(
         python,
         _FGT_PACKAGES,
@@ -417,7 +424,12 @@ def _install_svor_dependencies(
     _report(progress, 0.58, "SVOR dependencies ready")
 
 
-def _snapshot_download(*, repo_id: str, local_dir: Path, allow_patterns: list[str] | None = None) -> None:
+def _snapshot_download(
+    *,
+    repo_id: str,
+    local_dir: Path,
+    allow_patterns: list[str] | None = None,
+) -> None:
     try:
         from huggingface_hub import snapshot_download
     except ImportError as error:
@@ -535,7 +547,7 @@ def install_removal_backend(
         raise ValueError(f"Unsupported managed removal backend: {backend_id}")
 
     status = backend_status(backend_id)
-    if bool(status["available"]):
+    if bool(status.get("installed", False)):
         _report(progress, 1.0, f"{status['display_name']} is already installed")
         return _managed_root(backend_id)
 
@@ -608,7 +620,7 @@ def install_removal_backend(
         failure_log.unlink(missing_ok=True)
 
         ready = backend_status(backend_id)
-        if not bool(ready["available"]):
+        if not bool(ready.get("installed", False)):
             raise RuntimeError(
                 f"{spec.display_name} installation finished but OpenRoto cannot find its runtime."
             )
