@@ -24,9 +24,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Apply source patch
-        run: |
-          python scripts/apply_ux_playback_previews_patch.py
-          python scripts/fix_ux_patch.py
+        run: python scripts/apply_ux_playback_previews_patch.py
       - name: Validate generated sources
         run: |
           python -m compileall -q app tests
