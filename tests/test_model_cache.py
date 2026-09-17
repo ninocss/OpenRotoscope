@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import os
+import sys
 import tempfile
+import types
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -43,20 +45,23 @@ class ModelCacheTests(unittest.TestCase):
     def test_download_model_uses_the_same_cache_that_status_checks(self):
         spec = MODEL_CATALOG[ModelPreset.FAST]
         with tempfile.TemporaryDirectory() as directory:
+            hub = Path(directory) / "hub"
             with patch.dict(
                 os.environ,
-                {"HF_HOME": directory, "HF_HUB_CACHE": str(Path(directory) / "hub")},
+                {"HF_HOME": directory, "HF_HUB_CACHE": str(hub)},
                 clear=False,
             ):
                 def fake_snapshot_download(*, repo_id: str, cache_dir: str) -> str:
                     self.assertEqual(spec.repository, repo_id)
-                    self.assertEqual(hub_cache_root(), Path(cache_dir))
+                    self.assertEqual(hub, Path(cache_dir))
                     snapshot = repository_cache_dir(repo_id) / "snapshots" / "downloaded"
                     snapshot.mkdir(parents=True)
                     (snapshot / "model.pt").write_bytes(b"weights")
                     return str(snapshot)
 
-                with patch("huggingface_hub.snapshot_download", fake_snapshot_download):
+                fake_hub = types.ModuleType("huggingface_hub")
+                fake_hub.snapshot_download = fake_snapshot_download
+                with patch.dict(sys.modules, {"huggingface_hub": fake_hub}):
                     download_model(spec)
                 self.assertTrue(model_is_installed(spec))
 
