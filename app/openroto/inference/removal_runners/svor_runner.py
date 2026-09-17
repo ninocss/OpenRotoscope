@@ -100,6 +100,15 @@ def _sample_size(width: int, height: int) -> tuple[int, int]:
     return sample_h, sample_w
 
 
+def _svor_video_length(frame_count: int) -> int:
+    if frame_count <= 1:
+        return 1
+    # SVOR's Wan VAE uses a temporal compression ratio of four and floors the
+    # requested length to 4n+1. Round up here so the generated video always
+    # contains at least all OpenRoto frames; padded tail frames are discarded.
+    return ((frame_count - 1 + 3) // 4) * 4 + 1
+
+
 def run(job_path: Path) -> None:
     job = json.loads(job_path.read_text(encoding="utf-8"))
     root = Path(job["backend_root"])
@@ -122,6 +131,7 @@ def run(job_path: Path) -> None:
     sample_h, sample_w = _sample_size(*original_size)
     save_dir = work / "result"
     save_dir.mkdir(parents=True, exist_ok=True)
+    inference_length = _svor_video_length(expected)
 
     command = [
         sys.executable,
@@ -134,6 +144,10 @@ def run(job_path: Path) -> None:
         str(save_dir),
         "--sample_size",
         f"{sample_h},{sample_w}",
+        "--video_length",
+        str(inference_length),
+        "--fps",
+        str(max(1, int(round(fps)))),
     ]
     memory_mode = os.environ.get("OPENROTO_SVOR_GPU_MEMORY_MODE", "model_cpu_offload").strip()
     if memory_mode:
@@ -153,6 +167,7 @@ def run(job_path: Path) -> None:
         backend="svor",
         video=str(result_video),
         sample_size=[sample_h, sample_w],
+        requested_video_length=inference_length,
         gpu_memory_mode=memory_mode,
     )
 

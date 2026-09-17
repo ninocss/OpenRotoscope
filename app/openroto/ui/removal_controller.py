@@ -225,7 +225,7 @@ class RemovalController(QObject):
         self._ensure_full_tracking()
         self._validate_output_parent()
         status = backend_status(self._settings.backend)
-        if not bool(status["available"]):
+        if not bool(status["available"]) and not bool(status.get("installable")):
             raise RuntimeError(
                 f"{status['display_name']} is not ready: {status['status']}. "
                 "Configure the local removal backend and refresh Settings."

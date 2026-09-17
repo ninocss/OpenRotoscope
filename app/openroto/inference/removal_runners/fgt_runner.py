@@ -50,6 +50,7 @@ def run(job_path: Path) -> None:
     result_json = Path(job["result_json"])
 
     script = root / "tool" / "video_inpainting.py"
+    tool_dir = root / "tool"
     if not script.is_file():
         raise RuntimeError(f"FGT runner not found: {script}")
     if not frames.is_dir() or not masks.is_dir():
@@ -71,7 +72,10 @@ def run(job_path: Path) -> None:
         "--outroot",
         str(outroot),
     ]
-    process = subprocess.run(command, cwd=str(root), check=False)
+    # FGT resolves configs and checkpoints relative to tool/. Running from the
+    # repository root makes its default ../FGT and ../LAFC paths point outside
+    # the checkout.
+    process = subprocess.run(command, cwd=str(tool_dir), check=False)
     if process.returncode != 0:
         raise RuntimeError(f"FGT inference exited with code {process.returncode}")
 
