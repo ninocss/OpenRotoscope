@@ -34,12 +34,14 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path .\artifacts\ui-layout | Out-Null
-          .\.venv\Scripts\python.exe tests\run_ui_layout_smoke.py --width 1120 --height 700 --scale 1.0 --mode rotoscope --theme light --output .\artifacts\ui-layout\small-100-light.png
-          .\.venv\Scripts\python.exe tests\run_ui_layout_smoke.py --width 1120 --height 700 --scale 1.25 --mode remove --theme dark --output .\artifacts\ui-layout\small-125-remove-dark.png
-          .\.venv\Scripts\python.exe tests\run_ui_layout_smoke.py --width 1120 --height 700 --scale 1.25 --mode rotoscope --theme light --settings --output .\artifacts\ui-layout\settings-small-125-light.png
-          .\.venv\Scripts\python.exe tests\run_ui_layout_smoke.py --width 1360 --height 850 --scale 1.5 --mode rotoscope --theme dark --output .\artifacts\ui-layout\normal-150-dark.png
-          .\.venv\Scripts\python.exe tests\run_ui_layout_smoke.py --width 1360 --height 850 --scale 2.0 --mode remove --theme light --output .\artifacts\ui-layout\normal-200-remove-light.png
-          .\.venv\Scripts\python.exe tests\run_ui_layout_smoke.py --width 1920 --height 1080 --scale 1.0 --mode rotoscope --theme light --output .\artifacts\ui-layout\large-100-light.png
+          .\.venv\Scripts\python.exe tests\run_ui_layout_smoke.py --width 900 --height 480 --scale 1.0 --force-size --mode rotoscope --theme light --output .\artifacts\ui-layout\compact-900x480-100-light.png
+          .\.venv\Scripts\python.exe tests\run_ui_layout_smoke.py --width 900 --height 480 --scale 1.5 --force-size --mode remove --theme dark --output .\artifacts\ui-layout\compact-900x480-150-remove-dark.png
+          .\.venv\Scripts\python.exe tests\run_ui_layout_smoke.py --width 960 --height 500 --scale 2.0 --force-size --mode rotoscope --theme light --performance --output .\artifacts\ui-layout\compact-960x500-200-performance-light.png
+          .\.venv\Scripts\python.exe tests\run_ui_layout_smoke.py --width 960 --height 500 --scale 2.0 --force-size --mode rotoscope --theme light --settings --output .\artifacts\ui-layout\compact-960x500-200-settings-light.png
+          .\.venv\Scripts\python.exe tests\run_ui_layout_smoke.py --width 1120 --height 700 --scale 1.25 --mode remove --theme dark --output .\artifacts\ui-layout\minimum-1120x700-125-remove-dark.png
+          .\.venv\Scripts\python.exe tests\run_ui_layout_smoke.py --width 1360 --height 850 --scale 1.5 --mode rotoscope --theme dark --performance --output .\artifacts\ui-layout\normal-1360x850-150-performance-dark.png
+          .\.venv\Scripts\python.exe tests\run_ui_layout_smoke.py --width 1360 --height 850 --scale 2.0 --mode remove --theme light --output .\artifacts\ui-layout\normal-1360x850-200-remove-light.png
+          .\.venv\Scripts\python.exe tests\run_ui_layout_smoke.py --width 1920 --height 1080 --scale 1.0 --mode rotoscope --theme light --output .\artifacts\ui-layout\large-1920x1080-100-light.png
       - name: Upload UI layout captures
         uses: actions/upload-artifact@v4
         with:
