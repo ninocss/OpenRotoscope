@@ -2,14 +2,17 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Window
 
 ComboBox {
     id: control
     required property var theme
+    readonly property bool compactTouchMode: control.Window.window !== null && control.Window.window.width < 1120
 
-    implicitHeight: 36
+    implicitHeight: compactTouchMode ? 44 : 36
     leftPadding: 11
     rightPadding: 34
+    activeFocusOnTab: enabled && visible
     opacity: enabled ? 1.0 : 0.42
     font.family: theme.fontFamily
     font.pixelSize: 11
@@ -36,7 +39,7 @@ ComboBox {
     background: Rectangle {
         radius: control.theme.radiusSm
         color: control.down ? control.theme.surfacePressed : control.hovered ? control.theme.surfaceHover : control.theme.surfaceRaised
-        border.width: 1
+        border.width: control.visualFocus || control.popup.visible ? 2 : 1
         border.color: control.visualFocus || control.popup.visible ? control.theme.focus : control.theme.borderStrong
     }
 
@@ -45,7 +48,7 @@ ComboBox {
         required property int index
         required property var modelData
         width: control.width - 8
-        height: 34
+        height: control.compactTouchMode ? 44 : 34
         highlighted: control.highlightedIndex === index
         text: typeof modelData === "string" ? modelData : String(modelData)
         font.family: control.theme.fontFamily
@@ -69,6 +72,7 @@ ComboBox {
         width: control.width
         implicitHeight: Math.min(contentItem.implicitHeight + 8, 240)
         padding: 4
+        focus: true
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
 
         contentItem: ListView {
