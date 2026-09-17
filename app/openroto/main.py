@@ -79,6 +79,7 @@ def main(argv: list[str] | None = None) -> int:
     controller = FreeHandoffController(manifest) if arguments.handoff else ApplicationController(manifest)
     removal_controller = RemovalController(controller)
     model_manager = ModelManager(controller)
+    model_manager.changed.connect(removal_controller.refreshBackends)
     engine.setInitialProperties(
         {
             "appController": controller,
