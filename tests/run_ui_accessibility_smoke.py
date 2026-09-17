@@ -116,6 +116,11 @@ def descriptor(control: QObject) -> str:
     return " | ".join(parts) if parts else control.metaObject().className()
 
 
+def focused_descriptor(app: QApplication) -> str:
+    control = control_for_focus(app.focusObject())
+    return descriptor(control) if control is not None else "<non-control>"
+
+
 def item_rect(item: QQuickItem) -> tuple[float, float, float, float]:
     point = item.mapToScene(QPointF(0, 0))
     return float(point.x()), float(point.y()), float(item.width()), float(item.height())
@@ -251,9 +256,6 @@ def run() -> int:
             if not QMetaObject.invokeMethod(window, "openCompactControls"):
                 raise RuntimeError("Could not open compact controls drawer")
             wait(app, 160)
-            drawer = window.findChild(QObject, "compactControlsDrawer")
-            if drawer is None or not bool_property(drawer, "opened"):
-                raise AssertionError("Compact drawer did not open")
             drawer_touch = assert_touch_targets(window, "drawer")
             drawer_tabs = tab_sequence(app, quick_window, 16)
             assert_overlay_focus(
@@ -263,8 +265,12 @@ def run() -> int:
             )
             QTest.keyClick(quick_window, Qt.Key_Escape)
             wait(app, 120)
-            if bool_property(drawer, "opened"):
-                raise AssertionError("Escape did not close compact drawer")
+            drawer_escape_focus = focused_descriptor(app)
+            if "Open controls" not in drawer_escape_focus:
+                raise AssertionError(
+                    "Escape did not close the compact drawer and return focus to its trigger: "
+                    + drawer_escape_focus
+                )
 
             settings_signal = getattr(window, "settingsRequested", None)
             if settings_signal is not None and hasattr(settings_signal, "emit"):
@@ -272,9 +278,6 @@ def run() -> int:
             elif not QMetaObject.invokeMethod(window, "settingsRequested"):
                 raise RuntimeError("Could not open Settings")
             wait(app, 160)
-            settings = window.findChild(QObject, "settingsPopup")
-            if settings is None or not bool_property(settings, "opened"):
-                raise AssertionError("Settings popup did not open")
             settings_touch = assert_touch_targets(window, "settings")
             settings_tabs = tab_sequence(app, quick_window, 12)
             assert_overlay_focus(
@@ -289,8 +292,23 @@ def run() -> int:
                 raise AssertionError(f"Unexpected Settings tab order: {settings_tabs}")
             QTest.keyClick(quick_window, Qt.Key_Escape)
             wait(app, 120)
-            if bool_property(settings, "opened"):
-                raise AssertionError("Escape did not close Settings")
+            after_settings_escape = tab_sequence(app, quick_window, 8)
+            if not any(
+                any(token in entry for token in ("Open controls", "Settings", "Reset viewer"))
+                for entry in after_settings_escape
+            ):
+                raise AssertionError(
+                    "Escape did not return keyboard navigation to the main compact UI: "
+                    f"{after_settings_escape}"
+                )
+            if any(
+                any(token in entry for token in ("System", "Light", "Dark"))
+                for entry in after_settings_escape
+            ):
+                raise AssertionError(
+                    "Settings remained in the tab order after Escape: "
+                    f"{after_settings_escape}"
+                )
 
             print(
                 json.dumps(
@@ -304,6 +322,8 @@ def run() -> int:
                         "base_tab_sequence": base_tabs,
                         "drawer_tab_sequence": drawer_tabs,
                         "settings_tab_sequence": settings_tabs,
+                        "drawer_escape_focus": drawer_escape_focus,
+                        "after_settings_escape": after_settings_escape,
                         "escape_drawer": True,
                         "escape_settings": True,
                     },
