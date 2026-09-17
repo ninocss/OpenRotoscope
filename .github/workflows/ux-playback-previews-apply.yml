@@ -24,7 +24,9 @@ jobs:
         with:
           python-version: '3.12'
       - name: Apply source patch
-        run: python scripts/apply_ux_playback_previews_patch.py
+        run: |
+          python scripts/apply_ux_playback_previews_patch.py
+          git checkout -- .github/workflows/windows-ci.yml
       - name: Validate generated sources
         run: |
           python -m compileall -q app tests
@@ -32,15 +34,10 @@ jobs:
           grep -q 'retainWhileLoading: true' app/openroto/ui/PolishedMain.qml
           grep -q 'frame_ready=self.workerMaskReady.emit' app/openroto/ui/controller.py
           grep -q 'id: playbackTimer' app/openroto/ui/PolishedMain.qml
-      - name: Remove one-shot patch machinery
-        run: |
-          git rm scripts/apply_ux_playback_previews_patch.py
-          git rm scripts/fix_ux_patch.py
-          git rm .github/workflows/ux-playback-previews-apply.yml
       - name: Commit implementation
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -A
+          git add app tests
           git commit -m 'feat: smooth editor playback and progressive previews'
           git push origin HEAD:ux-playback-previews
