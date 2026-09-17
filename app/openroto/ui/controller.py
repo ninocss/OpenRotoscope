@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import shutil
 import threading
 import time
@@ -58,6 +59,9 @@ class ApplicationController(QObject):
     bridgeMessage = Signal("QVariantMap")
     workerProgress = Signal(float, str, str)
     workerTiming = Signal(str, float)
+    workerMaskReady = Signal(int)
+    previewRendered = Signal(int, int)
+    viewerFrameReady = Signal(int)
     operationFinished = Signal(str, str)
     closeRequested = Signal()
 
@@ -89,11 +93,22 @@ class ApplicationController(QObject):
         self._reduced_motion = reduced_motion_enabled()
         self._cancel = threading.Event()
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="OpenRoto")
+        self._preview_executor = ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix="OpenRotoPreview"
+        )
+        self._viewer_executor = ThreadPoolExecutor(
+            max_workers=2, thread_name_prefix="OpenRotoViewer"
+        )
+        self._preview_settings_revision = 0
+        self._preview_versions: dict[int, int] = {}
+        self._viewer_pending: set[int] = set()
         self._raw_dir = Path(manifest.matte_dir) / "raw"
         self._final_dir = Path(manifest.matte_dir) / "final"
         self._preview_dir = Path(manifest.matte_dir) / "preview"
+        self._viewer_dir = Path(manifest.matte_dir) / "viewer"
         self._raw_dir.mkdir(parents=True, exist_ok=True)
         self._preview_dir.mkdir(parents=True, exist_ok=True)
+        self._viewer_dir.mkdir(parents=True, exist_ok=True)
         self._timings: dict[str, float | None] = {key: None for key, _label in _TIMING_LABELS}
         self._engine = Sam2Engine(manifest.frames_dir, self._raw_dir)
         self._engine.set_timing_callback(lambda key, ms: self.workerTiming.emit(key, ms))
@@ -110,6 +125,9 @@ class ApplicationController(QObject):
         self.bridgeMessage.connect(self._on_bridge_message)
         self.workerProgress.connect(self._set_progress_from_worker)
         self.workerTiming.connect(self._set_timing_from_worker)
+        self.workerMaskReady.connect(self._on_worker_mask_ready)
+        self.previewRendered.connect(self._on_preview_rendered)
+        self.viewerFrameReady.connect(self._on_viewer_frame_ready)
         self.operationFinished.connect(self._finish_operation)
         try:
             self._bridge.connect()
@@ -117,10 +135,15 @@ class ApplicationController(QObject):
         except Exception as error:
             self._status = "Resolve connection unavailable"
             self._detail = str(error)
+        self._preview_timer = QTimer(self)
+        self._preview_timer.setSingleShot(True)
+        self._preview_timer.setInterval(120)
+        self._preview_timer.timeout.connect(self._queue_current_preview)
         self._theme_timer = QTimer(self)
         self._theme_timer.setInterval(1000)
         self._theme_timer.timeout.connect(self._refresh_theme)
         self._theme_timer.start()
+        QTimer.singleShot(0, lambda: self._queue_viewer_prefetch(self._current_frame))
 
     @Property(str, constant=True)
     def clipName(self) -> str:
@@ -145,14 +168,30 @@ class ApplicationController(QObject):
     def frameLabel(self) -> str:
         return f"{self._current_frame + 1} / {self.manifest.frame_count}"
 
+    @Property(float, constant=True)
+    def clipFps(self) -> float:
+        return float(self.manifest.fps)
+
     @Property(QUrl, notify=frameChanged)
     def currentFrameUrl(self) -> QUrl:
-        path = self._frame_path(self._current_frame)
-        return QUrl.fromLocalFile(str(path))
+        return self._viewer_frame_url(self._current_frame)
+
+    @Slot(int, result=QUrl)
+    def frameUrlAt(self, frame: int) -> QUrl:
+        bounded = max(0, min(int(frame), self.manifest.frame_count - 1))
+        return self._viewer_frame_url(bounded)
 
     @Property(QUrl, notify=maskChanged)
     def currentMaskUrl(self) -> QUrl:
-        path = self._preview_path(self._current_frame)
+        frame = self._current_frame
+        preview = self._preview_path(frame)
+        if (
+            self._preview_versions.get(frame) == self._preview_settings_revision
+            and preview.exists()
+        ):
+            path = preview
+        else:
+            path = self._raw_path(frame)
         if not path.exists():
             return QUrl()
         url = QUrl.fromLocalFile(str(path))
@@ -278,10 +317,11 @@ class ApplicationController(QObject):
         if bounded == self._current_frame:
             return
         self._current_frame = bounded
-        self._refresh_preview()
         self.frameChanged.emit()
         self.pointsChanged.emit()
         self.maskChanged.emit()
+        self._schedule_preview_refresh()
+        self._queue_viewer_prefetch(bounded)
 
     @Slot(float, float, bool)
     def addPoint(self, x: float, y: float, positive: bool) -> None:
@@ -337,6 +377,7 @@ class ApplicationController(QObject):
         self._mark_tracking_dirty()
         self._raw_path(self._current_frame).unlink(missing_ok=True)
         self._preview_path(self._current_frame).unlink(missing_ok=True)
+        self._preview_versions.pop(self._current_frame, None)
         self.pointsChanged.emit()
         self.maskChanged.emit()
 
@@ -373,19 +414,19 @@ class ApplicationController(QObject):
     def setExpandContract(self, value: int) -> None:
         self._matte_settings.expand_contract = max(-32, min(32, int(value)))
         self.changed.emit()
-        self._refresh_preview()
+        self._invalidate_preview_settings()
 
     @Slot(float)
     def setFeather(self, value: float) -> None:
         self._matte_settings.feather = max(0.0, min(64.0, float(value)))
         self.changed.emit()
-        self._refresh_preview()
+        self._invalidate_preview_settings()
 
     @Slot(bool)
     def setInvert(self, value: bool) -> None:
         self._matte_settings.invert = bool(value)
         self.changed.emit()
-        self._refresh_preview()
+        self._invalidate_preview_settings()
 
     @Slot()
     def track(self) -> None:
@@ -414,12 +455,15 @@ class ApplicationController(QObject):
         self._cancel.set()
         self._engine.cancel()
         self._theme_timer.stop()
+        self._preview_timer.stop()
         try:
             if self._bridge.connected and not self._completed:
                 self._bridge.send("cancel", reason="window_closed")
         finally:
             self._bridge.close()
             self._executor.shutdown(wait=False, cancel_futures=True)
+            self._preview_executor.shutdown(wait=False, cancel_futures=True)
+            self._viewer_executor.shutdown(wait=False, cancel_futures=True)
 
     @Slot(result=bool)
     def requestClose(self) -> bool:
@@ -439,7 +483,7 @@ class ApplicationController(QObject):
         if not points:
             return
         self._engine.segment_frame(frame, points, self._model_preset, self._worker_progress)
-        self._refresh_preview(frame)
+        self.workerMaskReady.emit(frame)
 
     def _track(self) -> None:
         self._engine.track(
@@ -448,10 +492,10 @@ class ApplicationController(QObject):
             self._model_preset,
             self._direction,
             self._worker_progress,
+            frame_ready=self.workerMaskReady.emit,
         )
         self._tracking_dirty = False
         self.trackingStateChanged.emit()
-        self._refresh_preview(self._current_frame)
 
     def _render_and_apply(self) -> None:
         missing = [
@@ -605,19 +649,116 @@ class ApplicationController(QObject):
             self.connectionChanged.emit()
             self.statusChanged.emit()
 
-    def _refresh_preview(self, frame: int | None = None) -> None:
-        frame_index = self._current_frame if frame is None else frame
-        raw = self._raw_path(frame_index)
-        if raw.exists():
-            started_ns = time.perf_counter_ns()
-            try:
-                render_preview(raw, self._preview_path(frame_index), self._matte_settings)
-            finally:
-                self.workerTiming.emit(
-                    "preview", (time.perf_counter_ns() - started_ns) / 1_000_000.0
-                )
+    def _invalidate_preview_settings(self) -> None:
+        self._preview_settings_revision += 1
+        self._preview_versions.clear()
+        self._mask_revision += 1
+        self.maskChanged.emit()
+        self._schedule_preview_refresh()
+
+    def _schedule_preview_refresh(self) -> None:
+        if self._closed or not self._raw_path(self._current_frame).exists():
+            return
+        self._preview_timer.start()
+
+    @Slot()
+    def _queue_current_preview(self) -> None:
+        if self._closed:
+            return
+        frame = self._current_frame
+        raw = self._raw_path(frame)
+        if not raw.exists():
+            return
+        revision = self._preview_settings_revision
+        settings = MatteSettings(
+            invert=self._matte_settings.invert,
+            expand_contract=self._matte_settings.expand_contract,
+            feather=self._matte_settings.feather,
+            overlay_opacity=self._matte_settings.overlay_opacity,
+        )
+        self._preview_executor.submit(self._render_preview_job, frame, revision, settings)
+
+    def _render_preview_job(
+        self, frame: int, revision: int, settings: MatteSettings
+    ) -> None:
+        raw = self._raw_path(frame)
+        if not raw.exists():
+            return
+        started_ns = time.perf_counter_ns()
+        try:
+            render_preview(raw, self._preview_path(frame), settings)
+        except (FileNotFoundError, OSError):
+            return
+        finally:
+            self.workerTiming.emit(
+                "preview", (time.perf_counter_ns() - started_ns) / 1_000_000.0
+            )
+        self.previewRendered.emit(frame, revision)
+
+    @Slot(int, int)
+    def _on_preview_rendered(self, frame: int, revision: int) -> None:
+        if revision != self._preview_settings_revision:
+            return
+        if not self._preview_path(frame).exists():
+            return
+        self._preview_versions[frame] = revision
+        if frame == self._current_frame:
             self._mask_revision += 1
             self.maskChanged.emit()
+
+    @Slot(int)
+    def _on_worker_mask_ready(self, frame: int) -> None:
+        self._preview_versions.pop(frame, None)
+        if frame != self._current_frame:
+            return
+        self._mask_revision += 1
+        self.maskChanged.emit()
+        self._schedule_preview_refresh()
+
+    def _viewer_frame_url(self, frame: int) -> QUrl:
+        proxy = self._viewer_path(frame)
+        path = proxy if proxy.exists() else self._frame_path(frame)
+        return QUrl.fromLocalFile(str(path))
+
+    def _queue_viewer_prefetch(self, center: int) -> None:
+        if self._closed:
+            return
+        for frame in (center, center + 1, center + 2, center - 1):
+            if not 0 <= frame < self.manifest.frame_count:
+                continue
+            if self._viewer_path(frame).exists() or frame in self._viewer_pending:
+                continue
+            self._viewer_pending.add(frame)
+            self._viewer_executor.submit(self._build_viewer_proxy, frame)
+
+    def _build_viewer_proxy(self, frame: int) -> None:
+        try:
+            from PIL import Image
+
+            source = self._frame_path(frame)
+            destination = self._viewer_path(frame)
+            with Image.open(source) as loaded:
+                if loaded.width <= 1920 and loaded.height <= 1080:
+                    return
+                image = loaded.convert("RGB")
+                image.thumbnail((1920, 1080), Image.Resampling.LANCZOS)
+                temporary = destination.with_suffix(".tmp.jpg")
+                image.save(
+                    temporary,
+                    format="JPEG",
+                    quality=91,
+                    subsampling=0,
+                    optimize=False,
+                )
+                os.replace(temporary, destination)
+        except (FileNotFoundError, OSError):
+            return
+        finally:
+            self.viewerFrameReady.emit(frame)
+
+    @Slot(int)
+    def _on_viewer_frame_ready(self, frame: int) -> None:
+        self._viewer_pending.discard(frame)
 
     def _frame_path(self, frame: int) -> Path:
         root = Path(self.manifest.frames_dir)
@@ -633,6 +774,9 @@ class ApplicationController(QObject):
 
     def _preview_path(self, frame: int) -> Path:
         return self._preview_dir / f"preview_{frame:08d}.png"
+
+    def _viewer_path(self, frame: int) -> Path:
+        return self._viewer_dir / f"frame_{frame:08d}.jpg"
 
     def _refresh_theme(self) -> None:
         dark = system_uses_dark_mode()

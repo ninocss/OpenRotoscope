@@ -32,6 +32,8 @@ ApplicationWindow {
     readonly property bool blocked: window.appController.busy || window.modelManager.busy
     readonly property int motionDuration: window.appController.reducedMotion ? 0 : 120
     readonly property bool compactMode: window.width < 1120
+    property bool playing: false
+    readonly property int playbackInterval: Math.max(16, Math.round(1000 / Math.max(1, window.appController.clipFps)))
 
     RotoTheme { id: theme; dark: window.dark }
     readonly property var uiTheme: theme
@@ -58,6 +60,33 @@ ApplicationWindow {
         imageStack.zoom = 1
         imageStack.x = 0
         imageStack.y = 0
+    }
+
+    function togglePlayback() {
+        if (window.playing) {
+            window.playing = false
+            return
+        }
+        if (window.appController.currentFrame >= window.appController.frameCount - 1)
+            window.appController.setFrame(0)
+        window.playing = true
+    }
+
+    function advancePlayback() {
+        const next = window.appController.currentFrame + 1
+        if (next >= window.appController.frameCount) {
+            window.playing = false
+            return
+        }
+        window.appController.setFrame(next)
+    }
+
+    Timer {
+        id: playbackTimer
+        interval: window.playbackInterval
+        repeat: true
+        running: window.playing && !window.modelManager.busy
+        onTriggered: window.advancePlayback()
     }
 
     component CenteredTip: ToolTip {
@@ -334,8 +363,23 @@ ApplicationWindow {
                                     source: window.viewerFrameSource
                                     fillMode: Image.PreserveAspectFit
                                     asynchronous: true
+                                    retainWhileLoading: true
                                     cache: true
                                     smooth: true
+                                }
+                                Image {
+                                    visible: false
+                                    source: window.appController.currentFrame + 1 < window.appController.frameCount
+                                        ? window.appController.frameUrlAt(window.appController.currentFrame + 1) : ""
+                                    asynchronous: true
+                                    cache: true
+                                }
+                                Image {
+                                    visible: false
+                                    source: window.appController.currentFrame + 2 < window.appController.frameCount
+                                        ? window.appController.frameUrlAt(window.appController.currentFrame + 2) : ""
+                                    asynchronous: true
+                                    cache: true
                                 }
 
                                 Item {
@@ -350,6 +394,8 @@ ApplicationWindow {
                                         source: window.appController.currentMaskUrl
                                         fillMode: Image.Stretch
                                         visible: false
+                                        asynchronous: true
+                                        retainWhileLoading: true
                                         cache: false
                                     }
                                     MultiEffect {
@@ -444,54 +490,47 @@ ApplicationWindow {
                                 }
                             }
 
-                            MultiEffect {
-                                anchors.fill: imageStack
-                                source: imageStack
-                                visible: window.appController.busy
-                                blurEnabled: true
-                                blur: 0.78
-                                blurMax: 48
-                                opacity: 0.96
-                            }
-                            Rectangle { anchors.fill: parent; visible: window.appController.busy; color: theme.scrim }
                             GlassPanel {
-                                anchors.centerIn: parent
-                                width: Math.min(390, parent.width - 48)
-                                height: busyColumn.implicitHeight + 32
+                                anchors.top: parent.top
+                                anchors.right: parent.right
+                                anchors.topMargin: theme.spaceMd
+                                anchors.rightMargin: theme.spaceMd
+                                width: Math.min(360, parent.width - theme.spaceLg * 2)
+                                height: 58
                                 visible: window.appController.busy
                                 theme: window.uiTheme
                                 strong: true
                                 elevated: true
-                                Column {
-                                    id: busyColumn
-                                    anchors.left: parent.left
-                                    anchors.right: parent.right
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    anchors.leftMargin: theme.spaceLg
-                                    anchors.rightMargin: theme.spaceLg
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.margins: theme.spaceSm
                                     spacing: theme.spaceSm
-                                    BusyIndicator { width: 24; height: 24; running: parent.parent.visible; anchors.horizontalCenter: parent.horizontalCenter }
-                                    Text {
-                                        width: parent.width
-                                        text: window.appController.status
-                                        color: theme.text
-                                        font.family: theme.fontFamily
-                                        font.pixelSize: 12
-                                        font.weight: Font.DemiBold
-                                        horizontalAlignment: Text.AlignHCenter
-                                        wrapMode: Text.WordWrap
+                                    BusyIndicator { Layout.preferredWidth: 20; Layout.preferredHeight: 20; running: parent.parent.visible }
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        spacing: 2
+                                        Text {
+                                            Layout.fillWidth: true
+                                            text: window.appController.status
+                                            color: theme.text
+                                            font.family: theme.fontFamily
+                                            font.pixelSize: 10
+                                            font.weight: Font.DemiBold
+                                            elide: Text.ElideRight
+                                        }
+                                        ProgressBar {
+                                            Layout.fillWidth: true
+                                            from: 0
+                                            to: 1
+                                            value: window.appController.progress
+                                        }
                                     }
                                     Text {
-                                        width: parent.width
-                                        visible: text.length > 0
-                                        text: window.appController.detail
+                                        text: Math.round(window.appController.progress * 100) + "%"
                                         color: theme.textSecondary
-                                        font.family: theme.fontFamily
-                                        font.pixelSize: 10
-                                        horizontalAlignment: Text.AlignHCenter
-                                        wrapMode: Text.WordWrap
+                                        font.family: theme.monoFontFamily
+                                        font.pixelSize: 9
                                     }
-                                    ProgressBar { width: parent.width; from: 0; to: 1; value: window.appController.progress }
                                 }
                             }
                         }
@@ -512,8 +551,21 @@ ApplicationWindow {
                                     quiet: true
                                     text: "‹"; font.pixelSize: 18
                                     toolTip: "Previous frame"
-                                    enabled: !window.blocked && window.appController.currentFrame > 0
-                                    onClicked: window.appController.setFrame(window.appController.currentFrame - 1)
+                                    enabled: !window.modelManager.busy && window.appController.currentFrame > 0
+                                    onClicked: {
+                                        window.playing = false
+                                        window.appController.setFrame(window.appController.currentFrame - 1)
+                                    }
+                                }
+                                RotoButton {
+                                    theme: window.uiTheme
+                                    width: window.compactMode ? 44 : 34; height: window.compactMode ? 44 : 34; leftPadding: 0; rightPadding: 0
+                                    quiet: true
+                                    text: window.playing ? "Ⅱ" : "▶"
+                                    font.pixelSize: window.playing ? 15 : 13
+                                    toolTip: window.playing ? "Pause · Space" : "Play · Space"
+                                    enabled: !window.modelManager.busy && window.appController.frameCount > 1
+                                    onClicked: window.togglePlayback()
                                 }
                                 Text {
                                     Layout.preferredWidth: window.compactMode ? 70 : 88
@@ -531,8 +583,9 @@ ApplicationWindow {
                                     to: Math.max(0, window.appController.frameCount - 1)
                                     stepSize: 1
                                     value: window.appController.currentFrame
-                                    enabled: !window.blocked
+                                    enabled: !window.modelManager.busy
                                     toolTip: window.appController.frameLabel
+                                    onPressedChanged: { if (pressed) window.playing = false }
                                     onMoved: window.appController.setFrame(Math.round(value))
                                 }
                                 RotoButton {
@@ -541,8 +594,11 @@ ApplicationWindow {
                                     quiet: true
                                     text: "›"; font.pixelSize: 18
                                     toolTip: "Next frame"
-                                    enabled: !window.blocked && window.appController.currentFrame < window.appController.frameCount - 1
-                                    onClicked: window.appController.setFrame(window.appController.currentFrame + 1)
+                                    enabled: !window.modelManager.busy && window.appController.currentFrame < window.appController.frameCount - 1
+                                    onClicked: {
+                                        window.playing = false
+                                        window.appController.setFrame(window.appController.currentFrame + 1)
+                                    }
                                 }
                             }
                         }
@@ -941,6 +997,7 @@ ApplicationWindow {
     Shortcut { sequence: "Ctrl+Z"; onActivated: window.appController.undo() }
     Shortcut { sequence: "Ctrl+Y"; onActivated: window.appController.redo() }
     Shortcut { sequence: "Ctrl+,"; onActivated: window.settingsRequested() }
+    Shortcut { sequence: "Space"; onActivated: window.togglePlayback() }
 
     onCompactModeChanged: {
         if (!window.compactMode)
@@ -948,6 +1005,7 @@ ApplicationWindow {
     }
 
     onClosing: close => {
+        window.playing = false
         if (window.appController.busy) {
             close.accepted = false
             closeGuard.open()
