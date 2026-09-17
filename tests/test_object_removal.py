@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sys
 import tempfile
 import unittest
@@ -15,6 +16,7 @@ sys.path.insert(0, str(ROOT / "app"))
 from openroto.inference.removal import RemovalEngine, RemovalSettings
 from openroto.inference.removal_backends import backend_status
 from openroto.inference.removal_comp import fusion_removal_comp_text
+from openroto.inference.removal_install import install_removal_backend
 
 
 class ObjectRemovalTests(unittest.TestCase):
@@ -95,6 +97,24 @@ class ObjectRemovalTests(unittest.TestCase):
         status = backend_status("temporal")
         self.assertTrue(status["available"])
         self.assertEqual("Built in", status["status"])
+
+    def test_uninstalled_managed_backends_download_on_first_use(self):
+        self.assertTrue(callable(install_removal_backend))
+        with tempfile.TemporaryDirectory() as temporary:
+            environment = {
+                "LOCALAPPDATA": temporary,
+                "OPENROTO_FGT_ROOT": "",
+                "OPENROTO_FGT_PYTHON": "",
+                "OPENROTO_SVOR_ROOT": "",
+                "OPENROTO_SVOR_PYTHON": "",
+            }
+            with mock.patch.dict(os.environ, environment, clear=False):
+                for backend_id in ("fgt", "svor"):
+                    status = backend_status(backend_id)
+                    self.assertTrue(status["available"])
+                    self.assertFalse(status["installed"])
+                    self.assertTrue(status["managed_installable"])
+                    self.assertEqual("Downloads on first use", status["status"])
 
     def test_removal_comp_uses_rgb_sequence_as_media_out(self):
         text = fusion_removal_comp_text(Path(r"C:\OpenRoto\removed_00000000.png"), 12)
