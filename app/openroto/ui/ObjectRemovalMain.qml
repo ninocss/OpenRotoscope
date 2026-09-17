@@ -165,7 +165,7 @@ TimedMain {
                                 quiet: true
                                 text: "ⓘ"
                                 font.pixelSize: 13
-                                toolTip: "Temporal Fill is built in. Optional backends may require separate local environments."
+                                toolTip: "Temporal Fill is built in. FGT++ and SVOR can be installed locally by OpenRoto."
                             }
                         }
                         RotoComboBox {
@@ -175,7 +175,7 @@ TimedMain {
                             theme: window.uiTheme
                             model: ["Temporal Fill", "FGT++", "SVOR"]
                             currentIndex: window.removalController.backend === "fgt" ? 1 : window.removalController.backend === "svor" ? 2 : 0
-                            enabled: !window.blocked
+                            enabled: !window.blocked && !window.modelManager.busy
                             onActivated: index => window.removalController.setBackend(index === 1 ? "fgt" : index === 2 ? "svor" : "temporal")
                         }
                         GlassPanel {
@@ -209,6 +209,37 @@ TimedMain {
                                     wrapMode: Text.WordWrap
                                 }
                             }
+                        }
+                        RotoButton {
+                            visible: window.removalController.backend !== "temporal"
+                                && !window.removalController.backendInfo.available
+                            Layout.fillWidth: true
+                            Layout.leftMargin: window.uiTheme.spaceLg
+                            Layout.rightMargin: window.uiTheme.spaceLg
+                            theme: window.uiTheme
+                            primary: true
+                            text: window.modelManager.busy
+                                ? "Installing backend…"
+                                : "Install " + window.removalController.backendInfo.display_name
+                            enabled: window.removalController.backendInfo.can_manage
+                                && !window.modelManager.busy
+                                && !window.appController.busy
+                            toolTip: window.removalController.backendInfo.can_manage
+                                ? window.removalController.backendInfo.download_size
+                                : "This backend is configured through environment variables."
+                            onClicked: window.modelManager.installRemovalBackend(window.removalController.backend)
+                        }
+                        Text {
+                            visible: window.removalController.backend !== "temporal"
+                                && window.modelManager.lastError.length > 0
+                            Layout.fillWidth: true
+                            Layout.leftMargin: window.uiTheme.spaceLg
+                            Layout.rightMargin: window.uiTheme.spaceLg
+                            text: window.modelManager.lastError
+                            color: window.uiTheme.danger
+                            font.family: window.uiTheme.fontFamily
+                            font.pixelSize: 9
+                            wrapMode: Text.WordWrap
                         }
 
                         RowLayout {
@@ -279,7 +310,7 @@ TimedMain {
                             enabled: window.appController.hasPrompts && !window.blocked && window.removalController.backendInfo.available
                             toolTip: window.removalController.backendInfo.available
                                 ? "Build a local preview without applying anything in Resolve."
-                                : "This removal backend is not available on this system."
+                                : "Install this removal backend first."
                             onClicked: window.removalController.preview()
                         }
 
@@ -389,7 +420,7 @@ TimedMain {
                         toolTip: !window.appController.bridgeConnected
                             ? "Start a new session from DaVinci Resolve."
                             : !window.removalController.backendInfo.available
-                                ? "Choose an available background-fill backend."
+                                ? "Install the selected background-fill backend first."
                                 : "Build the removal result and apply it in Resolve."
                         onClicked: window.removalController.removeAndApply()
                     }
