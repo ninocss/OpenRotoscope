@@ -8,8 +8,9 @@ Rectangle {
     property color dotColor: theme.accent
     property string toolTip: ""
     property int maximumLabelWidth: 150
+    property bool compact: false
 
-    implicitWidth: row.implicitWidth + 18
+    implicitWidth: compact ? 28 : row.implicitWidth + 18
     implicitHeight: 28
     radius: 14
     color: theme.surfaceRaised
@@ -19,7 +20,7 @@ Rectangle {
     Row {
         id: row
         anchors.centerIn: parent
-        spacing: 7
+        spacing: pill.compact ? 0 : 7
         Rectangle {
             anchors.verticalCenter: parent.verticalCenter
             width: 7
@@ -28,6 +29,7 @@ Rectangle {
             color: pill.dotColor
         }
         Text {
+            visible: !pill.compact
             anchors.verticalCenter: parent.verticalCenter
             width: Math.min(implicitWidth, pill.maximumLabelWidth)
             text: pill.label
