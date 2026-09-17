@@ -18,6 +18,7 @@ from openroto.inference.matte import save_raw_mask
 
 ProgressCallback = Callable[[float, str], None]
 TimingCallback = Callable[[str, float], None]
+FrameReadyCallback = Callable[[int], None]
 
 
 class InferenceUnavailableError(RuntimeError):
@@ -183,6 +184,8 @@ class Sam2Engine:
         preset: ModelPreset,
         direction: TrackingDirection,
         progress: ProgressCallback | None = None,
+        *,
+        frame_ready: FrameReadyCallback | None = None,
     ) -> None:
         if not prompts:
             raise ValueError("Place at least one positive point before tracking")
@@ -218,6 +221,8 @@ class Sam2Engine:
                     # SAM2 video predictors always take the fast branch above.
                     self.segment_frame(frame, points, preset, reset_cancel=False)
                 completed.add(frame)
+                if frame_ready is not None:
+                    frame_ready(frame)
 
             seed = min(prompts)
             passes: list[tuple[bool, int]] = []
@@ -252,6 +257,8 @@ class Sam2Engine:
                             self.raw_masks_dir / f"mask_{frame_index:08d}.png",
                         )
                         completed.add(frame_index)
+                        if frame_ready is not None:
+                            frame_ready(frame_index)
                         if progress:
                             fraction = len(completed) / frame_count
                             progress(
