@@ -225,7 +225,10 @@ def backend_status(backend_id: str) -> dict[str, object]:
 
     return {
         **asdict(spec),
-        "available": ready,
+        # Existing QML treats `available` as "the action can be started". A
+        # managed backend is therefore available before its first use, while
+        # `ready` still reports whether all local files are already installed.
+        "available": ready or installable,
         "ready": ready,
         "installable": installable,
         "status": status,
