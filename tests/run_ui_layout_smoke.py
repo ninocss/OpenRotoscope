@@ -125,114 +125,117 @@ def run() -> int:
         removal_controller = RemovalController(controller)
         model_manager = ModelManager(controller)
         engine = QQmlApplicationEngine()
-        engine.setInitialProperties(
-            {
-                "appController": controller,
-                "modelManager": model_manager,
-                "removalController": removal_controller,
-            }
-        )
-        qml_path = ROOT / "app" / "openroto" / "ui" / "ObjectRemovalMain.qml"
-        engine.load(QUrl.fromLocalFile(str(qml_path)))
-        if not engine.rootObjects():
-            return 4
+        try:
+            engine.setInitialProperties(
+                {
+                    "appController": controller,
+                    "modelManager": model_manager,
+                    "removalController": removal_controller,
+                }
+            )
+            qml_path = ROOT / "app" / "openroto" / "ui" / "ObjectRemovalMain.qml"
+            engine.load(QUrl.fromLocalFile(str(qml_path)))
+            if not engine.rootObjects():
+                return 4
 
-        window = engine.rootObjects()[0]
-        quick_window = wrapInstance(getCppPointer(window)[0], QQuickWindow)
-        window.setProperty("themeMode", ARGS.theme)
-        removal_controller.setWorkflowMode(ARGS.mode)
-        if ARGS.performance:
-            model_manager.setPerformanceStatsVisible(True)
+            window = engine.rootObjects()[0]
+            quick_window = wrapInstance(getCppPointer(window)[0], QQuickWindow)
+            window.setProperty("themeMode", ARGS.theme)
+            removal_controller.setWorkflowMode(ARGS.mode)
+            if ARGS.performance:
+                model_manager.setPerformanceStatsVisible(True)
 
-        declared_minimum = [int(window.minimumWidth()), int(window.minimumHeight())]
-        if ARGS.force_size:
-            window.setMinimumWidth(0)
-            window.setMinimumHeight(0)
-        window.setWidth(ARGS.width)
-        window.setHeight(ARGS.height)
-        window.show()
+            declared_minimum = [int(window.minimumWidth()), int(window.minimumHeight())]
+            if ARGS.force_size:
+                window.setMinimumWidth(0)
+                window.setMinimumHeight(0)
+            window.setWidth(ARGS.width)
+            window.setHeight(ARGS.height)
+            window.show()
+            app.processEvents()
 
-        compact_mode = bool(window.property("compactMode"))
-        if ARGS.width < 1120 and not compact_mode:
-            raise AssertionError("Compact mode did not activate below 1120 logical pixels")
-        if ARGS.width >= 1120 and compact_mode:
-            raise AssertionError("Compact mode stayed active at or above 1120 logical pixels")
+            compact_mode = bool(window.property("compactMode"))
+            if ARGS.width < 1120 and not compact_mode:
+                raise AssertionError("Compact mode did not activate below 1120 logical pixels")
+            if ARGS.width >= 1120 and compact_mode:
+                raise AssertionError("Compact mode stayed active at or above 1120 logical pixels")
 
-        if ARGS.drawer:
-            if not compact_mode:
-                raise AssertionError("Drawer capture requested outside compact mode")
-            if not QMetaObject.invokeMethod(window, "openCompactControls"):
-                raise RuntimeError("Could not open compact controls drawer")
-        if ARGS.settings:
-            signal = getattr(window, "settingsRequested", None)
-            if signal is not None and hasattr(signal, "emit"):
-                signal.emit()
-            elif not QMetaObject.invokeMethod(window, "settingsRequested"):
-                raise RuntimeError("Could not open the Settings popup")
+            if ARGS.drawer:
+                if not compact_mode:
+                    raise AssertionError("Drawer capture requested outside compact mode")
+                if not QMetaObject.invokeMethod(window, "openCompactControls"):
+                    raise RuntimeError("Could not open compact controls drawer")
+            if ARGS.settings:
+                signal = getattr(window, "settingsRequested", None)
+                if signal is not None and hasattr(signal, "emit"):
+                    signal.emit()
+                elif not QMetaObject.invokeMethod(window, "settingsRequested"):
+                    raise RuntimeError("Could not open the Settings popup")
 
-        result = {"ok": False}
+            result = {"ok": False}
 
-        def capture() -> None:
-            try:
-                actual_width = int(window.width())
-                actual_height = int(window.height())
-                effective_minimum = [int(window.minimumWidth()), int(window.minimumHeight())]
-                image = quick_window.grabWindow()
-                if image.isNull():
-                    raise RuntimeError("QQuickWindow.grabWindow() returned a null image")
-                ARGS.output.parent.mkdir(parents=True, exist_ok=True)
-                if not image.save(str(ARGS.output)):
-                    raise RuntimeError(f"Could not save {ARGS.output}")
+            def capture() -> None:
+                try:
+                    actual_width = int(window.width())
+                    actual_height = int(window.height())
+                    effective_minimum = [int(window.minimumWidth()), int(window.minimumHeight())]
+                    image = quick_window.grabWindow()
+                    if image.isNull():
+                        raise RuntimeError("QQuickWindow.grabWindow() returned a null image")
+                    ARGS.output.parent.mkdir(parents=True, exist_ok=True)
+                    if not image.save(str(ARGS.output)):
+                        raise RuntimeError(f"Could not save {ARGS.output}")
 
-                expected_pixel_width = round(ARGS.width * ARGS.scale)
-                expected_pixel_height = round(ARGS.height * ARGS.scale)
-                print(
-                    json.dumps(
-                        {
-                            "requested": [ARGS.width, ARGS.height],
-                            "actual": [actual_width, actual_height],
-                            "declared_minimum": declared_minimum,
-                            "effective_minimum": effective_minimum,
-                            "forced_size": ARGS.force_size,
-                            "compact_mode": compact_mode,
-                            "drawer": ARGS.drawer,
-                            "scale": ARGS.scale,
-                            "expected_pixels": [expected_pixel_width, expected_pixel_height],
-                            "image_pixels": [image.width(), image.height()],
-                            "mode": ARGS.mode,
-                            "theme": ARGS.theme,
-                            "settings": ARGS.settings,
-                            "performance": ARGS.performance,
-                            "output": str(ARGS.output),
-                        },
-                        sort_keys=True,
+                    expected_pixel_width = round(ARGS.width * ARGS.scale)
+                    expected_pixel_height = round(ARGS.height * ARGS.scale)
+                    print(
+                        json.dumps(
+                            {
+                                "requested": [ARGS.width, ARGS.height],
+                                "actual": [actual_width, actual_height],
+                                "declared_minimum": declared_minimum,
+                                "effective_minimum": effective_minimum,
+                                "forced_size": ARGS.force_size,
+                                "compact_mode": compact_mode,
+                                "drawer": ARGS.drawer,
+                                "scale": ARGS.scale,
+                                "expected_pixels": [expected_pixel_width, expected_pixel_height],
+                                "image_pixels": [image.width(), image.height()],
+                                "mode": ARGS.mode,
+                                "theme": ARGS.theme,
+                                "settings": ARGS.settings,
+                                "performance": ARGS.performance,
+                                "output": str(ARGS.output),
+                            },
+                            sort_keys=True,
+                        )
                     )
-                )
-                if not ARGS.force_size and (
-                    actual_width < declared_minimum[0] or actual_height < declared_minimum[1]
-                ):
-                    raise AssertionError("Window rendered below its declared minimum size")
-                if actual_width != ARGS.width or actual_height != ARGS.height:
-                    raise AssertionError(
-                        f"Requested {ARGS.width}x{ARGS.height}, got {actual_width}x{actual_height}"
-                    )
-                if image.width() != expected_pixel_width or image.height() != expected_pixel_height:
-                    raise AssertionError(
-                        "High-DPI render size mismatch: expected "
-                        f"{expected_pixel_width}x{expected_pixel_height}, got "
-                        f"{image.width()}x{image.height()}"
-                    )
-                result["ok"] = True
-            finally:
-                app.quit()
+                    if not ARGS.force_size and (
+                        actual_width < declared_minimum[0] or actual_height < declared_minimum[1]
+                    ):
+                        raise AssertionError("Window rendered below its declared minimum size")
+                    if actual_width != ARGS.width or actual_height != ARGS.height:
+                        raise AssertionError(
+                            f"Requested {ARGS.width}x{ARGS.height}, got {actual_width}x{actual_height}"
+                        )
+                    if image.width() != expected_pixel_width or image.height() != expected_pixel_height:
+                        raise AssertionError(
+                            "High-DPI render size mismatch: expected "
+                            f"{expected_pixel_width}x{expected_pixel_height}, got "
+                            f"{image.width()}x{image.height()}"
+                        )
+                    result["ok"] = True
+                finally:
+                    app.quit()
 
-        QTimer.singleShot(500, capture)
-        exit_code = app.exec()
-        removal_controller.close()
-        model_manager.close()
-        controller.closeSession()
-        server.close()
-        return exit_code if exit_code else (0 if result["ok"] else 5)
+            QTimer.singleShot(500, capture)
+            exit_code = app.exec()
+            return exit_code if exit_code else (0 if result["ok"] else 5)
+        finally:
+            removal_controller.close()
+            model_manager.close()
+            controller.closeSession()
+            server.close()
 
 
 if __name__ == "__main__":
