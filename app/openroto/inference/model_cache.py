@@ -42,8 +42,9 @@ def download_model(spec: ModelSpec) -> None:
     except ImportError as error:
         raise RuntimeError("The Hugging Face model manager is not installed.") from error
 
-    model_home().mkdir(parents=True, exist_ok=True)
-    snapshot_download(repo_id=spec.repository)
+    cache_root = hub_cache_root()
+    cache_root.mkdir(parents=True, exist_ok=True)
+    snapshot_download(repo_id=spec.repository, cache_dir=str(cache_root))
     if not model_is_installed(spec):
         raise RuntimeError(f"{spec.display_name} finished downloading but its cache is incomplete.")
 
