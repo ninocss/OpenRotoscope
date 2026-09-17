@@ -1,0 +1,31 @@
+name: Apply Compact UI Patch
+
+on:
+  push:
+    branches:
+      - app-redesign
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: app-redesign
+          fetch-depth: 0
+      - name: Apply compact UI changes
+        run: python scripts/apply_compact_ui_patch.py
+      - name: Remove one-time patch helpers
+        run: |
+          git rm scripts/apply_compact_ui_patch.py
+          git rm .github/workflows/apply-compact-ui.yml
+      - name: Commit compact mode
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/openroto/ui/PolishedMain.qml app/openroto/ui/TimedMain.qml app/openroto/ui/ObjectRemovalMain.qml
+          git commit -m "ui: add responsive compact mode"
+          git push origin HEAD:app-redesign
