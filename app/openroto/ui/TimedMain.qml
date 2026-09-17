@@ -15,9 +15,9 @@ PolishedMain {
     GlassPanel {
         parent: window.contentItem
         z: 1200
-        x: Math.max(18, Math.round((window.width - window.sidePanelWidth - width) / 2))
+        x: Math.max(18, Math.round(((window.compactMode ? window.width : window.width - window.sidePanelWidth) - width) / 2))
         y: 80
-        width: Math.min(760, window.width - window.sidePanelWidth - 72)
+        width: Math.min(760, window.width - (window.compactMode ? 0 : window.sidePanelWidth) - 72)
         height: 72
         visible: window.modelManager.performanceStatsVisible
         theme: window.uiTheme

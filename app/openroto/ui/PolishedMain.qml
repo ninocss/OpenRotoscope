@@ -14,8 +14,8 @@ ApplicationWindow {
 
     width: 1360
     height: 850
-    minimumWidth: 1120
-    minimumHeight: 700
+    minimumWidth: 900
+    minimumHeight: 480
     visible: true
     title: "OpenRoto — " + window.appController.clipName
     color: "transparent"
@@ -31,6 +31,7 @@ ApplicationWindow {
         || (interfaceSettings.themeMode === "system" && window.appController.darkMode)
     readonly property bool blocked: window.appController.busy || window.modelManager.busy
     readonly property int motionDuration: window.appController.reducedMotion ? 0 : 120
+    readonly property bool compactMode: window.width < 1120
 
     RotoTheme { id: theme; dark: window.dark }
     readonly property var uiTheme: theme
@@ -43,8 +44,15 @@ ApplicationWindow {
     property bool selectionEnabled: true
     property string viewerTitle: "Viewer"
     property int sidePanelWidth: 332
+    property Component activeSidePanelComponent: window.customSidePanelComponent !== null
+        ? window.customSidePanelComponent : rotoscopeControlsComponent
 
     signal settingsRequested()
+
+    function openCompactControls() {
+        if (window.compactMode)
+            controlsDrawer.open()
+    }
 
     function resetViewer() {
         imageStack.zoom = 1
@@ -150,6 +158,7 @@ ApplicationWindow {
                                 font.weight: Font.DemiBold
                             }
                             Text {
+                                visible: !window.compactMode
                                 width: Math.min(390, implicitWidth)
                                 text: window.appController.clipName + "  ·  " + window.appController.clipMeta
                                 color: theme.textSecondary
@@ -207,6 +216,7 @@ ApplicationWindow {
                         }
                         StatusPill {
                             theme: window.uiTheme
+                            compact: window.compactMode
                             label: window.appController.bridgeConnected ? "Resolve linked" : "Resolve offline"
                             dotColor: window.appController.bridgeConnected ? theme.success : theme.danger
                             toolTip: window.appController.bridgeConnected
@@ -215,9 +225,20 @@ ApplicationWindow {
                         }
                         StatusPill {
                             theme: window.uiTheme
+                            compact: window.compactMode
                             label: window.appController.computeBadge
                             dotColor: window.appController.computeDevice.indexOf("CUDA") >= 0 ? theme.success : theme.warning
                             toolTip: window.appController.computeDevice + "\n" + window.appController.computeDetail
+                        }
+                        RotoButton {
+                            visible: window.compactMode
+                            theme: window.uiTheme
+                            width: 34; height: 34; leftPadding: 0; rightPadding: 0
+                            quiet: true
+                            text: "☰"
+                            font.family: "Segoe UI Symbol"; font.pixelSize: 15
+                            toolTip: "Open controls"
+                            onClicked: window.openCompactControls()
                         }
                         RotoButton {
                             theme: window.uiTheme
@@ -240,7 +261,7 @@ ApplicationWindow {
                 GlassPanel {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    Layout.minimumWidth: 700
+                    Layout.minimumWidth: window.compactMode ? 0 : 700
                     theme: window.uiTheme
 
                     ColumnLayout {
@@ -383,7 +404,7 @@ ApplicationWindow {
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 anchors.bottom: parent.bottom
                                 anchors.bottomMargin: theme.spaceMd
-                                width: hintRow.implicitWidth + 24
+                                width: Math.min(hintRow.implicitWidth + 24, parent.width - theme.spaceLg * 2)
                                 height: 32
                                 radius: 16
                                 theme: window.uiTheme
@@ -392,18 +413,33 @@ ApplicationWindow {
                                 Row {
                                     id: hintRow
                                     anchors.centerIn: parent
-                                    spacing: theme.spaceLg
+                                    spacing: window.compactMode ? theme.spaceSm : theme.spaceLg
                                     Row {
                                         spacing: theme.spaceXs
                                         SubjectMarker { width: 16; height: 16; positive: true; anchors.verticalCenter: parent.verticalCenter }
-                                        Text { text: "Subject · Left click"; color: theme.text; font.family: theme.fontFamily; font.pixelSize: 10; anchors.verticalCenter: parent.verticalCenter }
+                                        Text {
+                                            text: window.compactMode ? "Subject · LMB" : "Subject · Left click"
+                                            color: theme.text; font.family: theme.fontFamily
+                                            font.pixelSize: window.compactMode ? 9 : 10
+                                            anchors.verticalCenter: parent.verticalCenter
+                                        }
                                     }
                                     Row {
                                         spacing: theme.spaceXs
                                         SubjectMarker { width: 16; height: 16; positive: false; anchors.verticalCenter: parent.verticalCenter }
-                                        Text { text: "Exclude · Right click"; color: theme.text; font.family: theme.fontFamily; font.pixelSize: 10; anchors.verticalCenter: parent.verticalCenter }
+                                        Text {
+                                            text: window.compactMode ? "Exclude · RMB" : "Exclude · Right click"
+                                            color: theme.text; font.family: theme.fontFamily
+                                            font.pixelSize: window.compactMode ? 9 : 10
+                                            anchors.verticalCenter: parent.verticalCenter
+                                        }
                                     }
-                                    Text { text: "Wheel zoom · Middle drag"; color: theme.textSecondary; font.family: theme.fontFamily; font.pixelSize: 10; anchors.verticalCenter: parent.verticalCenter }
+                                    Text {
+                                        text: window.compactMode ? "Wheel · MMB drag" : "Wheel zoom · Middle drag"
+                                        color: theme.textSecondary; font.family: theme.fontFamily
+                                        font.pixelSize: window.compactMode ? 9 : 10
+                                        anchors.verticalCenter: parent.verticalCenter
+                                    }
                                 }
                             }
 
@@ -479,7 +515,7 @@ ApplicationWindow {
                                     onClicked: window.appController.setFrame(window.appController.currentFrame - 1)
                                 }
                                 Text {
-                                    Layout.preferredWidth: 88
+                                    Layout.preferredWidth: window.compactMode ? 70 : 88
                                     text: window.appController.frameLabel
                                     color: theme.textSecondary
                                     font.family: theme.monoFontFamily
@@ -513,12 +549,37 @@ ApplicationWindow {
                 }
 
                 Loader {
-                    Layout.preferredWidth: window.sidePanelWidth
-                    Layout.minimumWidth: window.sidePanelWidth
-                    Layout.maximumWidth: window.sidePanelWidth
+                    visible: !window.compactMode
+                    Layout.preferredWidth: visible ? window.sidePanelWidth : 0
+                    Layout.minimumWidth: visible ? window.sidePanelWidth : 0
+                    Layout.maximumWidth: visible ? window.sidePanelWidth : 0
                     Layout.fillHeight: true
-                    sourceComponent: window.customSidePanelComponent !== null ? window.customSidePanelComponent : rotoscopeControlsComponent
+                    sourceComponent: visible ? window.activeSidePanelComponent : null
                 }
+            }
+        }
+    }
+
+    Drawer {
+        id: controlsDrawer
+        edge: Qt.RightEdge
+        width: Math.min(380, Math.max(300, window.width * 0.86))
+        height: window.height
+        modal: true
+        interactive: window.compactMode
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+
+        background: Rectangle {
+            color: theme.canvas
+            border.width: 1
+            border.color: theme.borderStrong
+        }
+
+        contentItem: Item {
+            Loader {
+                anchors.fill: parent
+                anchors.margins: theme.spaceSm
+                sourceComponent: window.compactMode ? window.activeSidePanelComponent : null
             }
         }
     }
@@ -861,6 +922,11 @@ ApplicationWindow {
     Shortcut { sequence: "Ctrl+Z"; onActivated: window.appController.undo() }
     Shortcut { sequence: "Ctrl+Y"; onActivated: window.appController.redo() }
     Shortcut { sequence: "Ctrl+,"; onActivated: window.settingsRequested() }
+
+    onCompactModeChanged: {
+        if (!window.compactMode)
+            controlsDrawer.close()
+    }
 
     onClosing: close => {
         if (window.appController.busy) {

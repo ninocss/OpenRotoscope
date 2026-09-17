@@ -26,7 +26,7 @@ TimedMain {
     Component {
         id: workflowSwitcher
         GlassPanel {
-            width: 236
+            width: window.compactMode ? 196 : 236
             height: 38
             radius: 19
             theme: window.uiTheme
