@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sys
 import tempfile
 import unittest
@@ -96,6 +97,71 @@ class ObjectRemovalTests(unittest.TestCase):
         self.assertTrue(status["available"])
         self.assertEqual("Built in", status["status"])
 
+    def test_fgt_is_ready_only_after_runtime_code_and_weights_exist(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            environment = {
+                "LOCALAPPDATA": temporary,
+                "OPENROTO_FGT_ROOT": "",
+                "OPENROTO_FGT_PYTHON": "",
+            }
+            with mock.patch.dict(os.environ, environment, clear=False):
+                base = Path(temporary) / "OpenRoto" / "RemovalBackends" / "fgt"
+                root = base / "repo"
+                (root / "tool").mkdir(parents=True)
+                (root / "tool" / "video_inpainting.py").write_text("# runner", encoding="utf-8")
+                (base / "runtime").mkdir(parents=True)
+                (base / "runtime" / "python.exe").write_bytes(b"python")
+
+                status = backend_status("fgt")
+                self.assertFalse(status["available"])
+                self.assertEqual("Model weights missing", status["status"])
+
+                required = (
+                    root / "FGT" / "checkpoint" / "fgt.pth.tar",
+                    root / "FGT" / "checkpoint" / "config.yaml",
+                    root / "LAFC" / "checkpoint" / "lafc.pth.tar",
+                    root / "LAFC" / "checkpoint" / "config.yaml",
+                    root / "FGT" / "flowCheckPoint" / "lafc_single.pth.tar",
+                    root / "FGT" / "flowCheckPoint" / "config.yaml",
+                )
+                for path in required:
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_bytes(b"model")
+
+                status = backend_status("fgt")
+                self.assertTrue(status["available"])
+                self.assertEqual("Ready", status["status"])
+
+    def test_svor_is_ready_only_after_loras_and_wan_model_exist(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            environment = {
+                "LOCALAPPDATA": temporary,
+                "OPENROTO_SVOR_ROOT": "",
+                "OPENROTO_SVOR_PYTHON": "",
+            }
+            with mock.patch.dict(os.environ, environment, clear=False):
+                base = Path(temporary) / "OpenRoto" / "RemovalBackends" / "svor"
+                root = base / "repo"
+                root.mkdir(parents=True)
+                (root / "predict_SVOR.py").write_text("# runner", encoding="utf-8")
+                (base / "runtime").mkdir(parents=True)
+                (base / "runtime" / "python.exe").write_bytes(b"python")
+                models = root / "models"
+                models.mkdir()
+                (models / "remove_model_stage1.safetensors").write_bytes(b"one")
+                (models / "remove_model_stage2.safetensors").write_bytes(b"two")
+
+                status = backend_status("svor")
+                self.assertFalse(status["available"])
+                self.assertEqual("Model weights missing", status["status"])
+
+                wan = models / "Wan2.1-VACE-1.3B"
+                wan.mkdir()
+                (wan / "model_index.json").write_text("{}", encoding="utf-8")
+                status = backend_status("svor")
+                self.assertTrue(status["available"])
+                self.assertEqual("Ready", status["status"])
+
     def test_removal_comp_uses_rgb_sequence_as_media_out(self):
         text = fusion_removal_comp_text(Path(r"C:\OpenRoto\removed_00000000.png"), 12)
         self.assertIn("OpenRotoRemoval = Loader", text)
@@ -115,6 +181,7 @@ class ObjectRemovalTests(unittest.TestCase):
         self.assertIn('text: "Remove"', qml)
         self.assertIn('model: ["Temporal Fill", "FGT++", "SVOR"]', qml)
         self.assertIn("backendInfo.available", qml)
+        self.assertIn("installRemovalBackend", qml)
         self.assertIn("Track, Remove & Apply", qml)
         self.assertIn("currentRemovalUrl", qml)
         self.assertIn('text: window.appController.status === "Waiting for Resolve"', qml)
