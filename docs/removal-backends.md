@@ -1,10 +1,24 @@
 # OpenRoto object-removal backends
 
-OpenRoto keeps video inpainting separate from the packaged SAM2/Qt process. This avoids dependency conflicts and lets each optional backend use the Python/Torch stack it was designed for.
+OpenRoto keeps video inpainting separate from the packaged SAM2/Qt process. FGT++ and SVOR run in isolated sidecar Python environments so their PyTorch/dependency versions do not alter OpenRoto or DaVinci Resolve.
 
 ## Built-in: Temporal Fill
 
 No setup is required. OpenRoto reconstructs masked pixels from nearby frames where the background is visible, then uses a spatial fallback for pixels that remain hidden. This is the fastest option and is intended for previews and simple shots.
+
+## Automatic installation
+
+FGT++ and SVOR are installed on first use. Select the backend and start **Preview removal** or **Remove & Apply**. OpenRoto then:
+
+1. downloads the pinned upstream source into `%LOCALAPPDATA%\OpenRoto\RemovalBackends\<backend>\repo`;
+2. creates an isolated Python 3.10 sidecar environment;
+3. installs that backend's inference dependencies;
+4. downloads the required model weights from Hugging Face; and
+5. starts inference only after the complete installation has been moved into its final location.
+
+On Windows the installer downloads the official Python 3.10.11 embeddable runtime, bootstraps a virtual environment, and does not require a system Python installation. Failed or cancelled installs stay outside the final backend directory, so an incomplete download is not reported as Ready.
+
+The first installation can be large, especially SVOR because it also downloads `Wan-AI/Wan2.1-VACE-1.3B`.
 
 ## FGT++
 
@@ -12,37 +26,23 @@ Upstream: https://github.com/hitachinsk/FGT
 
 License: MIT.
 
-The official repository documents Ubuntu 20.04, Python 3.6.8 and PyTorch 1.10.1. Because that environment is much older than OpenRoto's packaged Python/Torch stack, OpenRoto runs FGT in an isolated sidecar Python environment instead of importing it into the main app.
+OpenRoto installs the upstream source in an isolated Python 3.10 environment with a compatibility set based around PyTorch 1.13.1 and NumPy 1.23.5. It downloads the official pretrained FGT/LAFC weights from `hitachinsk/FGT` on Hugging Face and lays them out in the checkpoint directories expected by the upstream object-removal script.
 
-Create a local environment that can run the upstream command below successfully:
-
-```text
-python tool/video_inpainting.py --path <frames> --path_mask <masks> --outroot <output>
-```
-
-Then set these variables before starting OpenRoto/Resolve:
-
-```text
-OPENROTO_FGT_ROOT=<path to FGT repository>
-OPENROTO_FGT_PYTHON=<path to the Python executable for that FGT environment>
-```
-
-On Windows, upstream FGT is not officially supported. Use a Windows-compatible local port/environment if you have one. OpenRoto deliberately does not silently install or modify the legacy FGT environment.
+The upstream project originally documented Ubuntu 20.04, Python 3.6.8 and PyTorch 1.10.1. OpenRoto's sidecar exists specifically to avoid importing that legacy dependency stack into the main app.
 
 ## SVOR
 
 Upstream: https://github.com/xiaomi-research/svor
 
-License: Apache-2.0 for the SVOR repository. The upstream setup additionally downloads Wan2.1-VACE-1.3B and SVOR LoRA weights; review their upstream license terms before redistribution. OpenRoto does not bundle those weights.
+License: Apache-2.0 for the SVOR repository. The managed setup also downloads model files from `HigherHu/SVOR` and `Wan-AI/Wan2.1-VACE-1.3B`; their license terms apply to those weights.
 
-The official SVOR repository documents Python 3.10, PyTorch 2.7.0 and optional Flash-Attention. It reports about 33 GB of GPU memory in the default mode and about 24 GB with `model_cpu_offload`.
+OpenRoto installs PyTorch 2.7.0 / torchvision 0.22.0 in the isolated sidecar, then installs the inference-only dependencies required by `predict_SVOR.py`. It downloads:
 
-Create the upstream SVOR environment and download the model files described by the project. Then set:
+- `HigherHu/SVOR/remove_model_stage1.safetensors`
+- `HigherHu/SVOR/remove_model_stage2.safetensors`
+- `Wan-AI/Wan2.1-VACE-1.3B`
 
-```text
-OPENROTO_SVOR_ROOT=<path to SVOR repository>
-OPENROTO_SVOR_PYTHON=<path to the Python executable for that SVOR environment>
-```
+The upstream project reports roughly 33 GB of GPU memory in its default mode and roughly 24 GB with `model_cpu_offload`. OpenRoto defaults to `model_cpu_offload`.
 
 Optional tuning variables:
 
@@ -53,6 +53,20 @@ OPENROTO_SVOR_STEPS=20
 ```
 
 If `OPENROTO_SVOR_SAMPLE_SIZE` is not set, the OpenRoto runner preserves the source aspect ratio and caps inference at roughly 1280x720. The generated result is resized back to the Resolve frame dimensions before mask-aware compositing.
+
+## External environments
+
+Advanced users can still bypass the managed installer with explicit environment variables:
+
+```text
+OPENROTO_FGT_ROOT=<path to FGT repository>
+OPENROTO_FGT_PYTHON=<path to its Python executable>
+
+OPENROTO_SVOR_ROOT=<path to SVOR repository>
+OPENROTO_SVOR_PYTHON=<path to its Python executable>
+```
+
+If either variable for a backend is set, OpenRoto treats that backend as externally managed and will not overwrite or repair it automatically.
 
 ## Backend safety
 
@@ -70,12 +84,4 @@ python .\scripts\benchmark-removal.py `
   --fps 24
 ```
 
-The benchmark writes one output sequence and contact sheet per available backend plus `benchmark.json` containing:
-
-- total elapsed milliseconds
-- effective frames per second
-- approximate peak VRAM delta sampled with `nvidia-smi`
-- OpenRoto removal timing values
-- backend license/VRAM metadata
-
-Peak VRAM is an approximation because `nvidia-smi` observes total GPU memory use, including other applications. Visual quality is intentionally not reduced to a synthetic score; compare the generated sequences/contact sheets on the actual shot.
+The benchmark writes one output sequence and contact sheet per available backend plus `benchmark.json` containing total elapsed time, effective FPS, approximate peak VRAM delta, OpenRoto timing values, and backend metadata.

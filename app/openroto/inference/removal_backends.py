@@ -91,23 +91,44 @@ def backend_python(backend_id: str) -> Path:
 def backend_status(backend_id: str) -> dict[str, object]:
     spec = REMOVAL_BACKENDS[backend_id]
     if backend_id == "temporal":
-        return {**asdict(spec), "available": True, "status": "Built in", "root": ""}
+        return {
+            **asdict(spec),
+            "available": True,
+            "installed": True,
+            "managed_installable": False,
+            "status": "Built in",
+            "root": "",
+            "python": "",
+        }
 
     root = backend_root(backend_id)
     python = backend_python(backend_id)
     marker = root / ("tool/video_inpainting.py" if backend_id == "fgt" else "predict_SVOR.py")
-    available = python.is_file() and marker.is_file()
-    if available:
+    installed = python.is_file() and marker.is_file()
+    explicit = bool(os.environ.get(spec.root_env, "") or os.environ.get(spec.python_env, ""))
+    managed_installable = not explicit
+
+    if installed:
         status = "Ready"
-    elif not root.exists():
-        status = "Not installed"
-    elif not marker.is_file():
+    elif explicit and not root.exists():
+        status = "Configured path missing"
+    elif explicit and not marker.is_file():
         status = "Repository incomplete"
-    else:
+    elif explicit:
         status = "Python environment missing"
+    elif root.exists() or python.exists():
+        status = "Repair on first use"
+    else:
+        status = "Downloads on first use"
+
     return {
         **asdict(spec),
-        "available": available,
+        # The UI uses `available` to decide whether a backend can be selected.
+        # Managed backends are available even before installation because the
+        # first inference operation installs them automatically.
+        "available": installed or managed_installable,
+        "installed": installed,
+        "managed_installable": managed_installable,
         "status": status,
         "root": str(root),
         "python": str(python),
@@ -157,8 +178,15 @@ def run_external_backend(
 ) -> Path:
     if backend_id not in {"fgt", "svor"}:
         raise ValueError(f"Unsupported external removal backend: {backend_id}")
+
     status = backend_status(backend_id)
-    if not status["available"]:
+    if not bool(status.get("installed", False)) and bool(status.get("managed_installable", False)):
+        from openroto.inference.removal_install import install_removal_backend
+
+        install_removal_backend(backend_id, progress=progress, cancelled=cancelled)
+        status = backend_status(backend_id)
+
+    if not bool(status.get("installed", False)):
         spec = REMOVAL_BACKENDS[backend_id]
         raise RuntimeError(
             f"{spec.display_name} is not configured. Install its local sidecar environment "

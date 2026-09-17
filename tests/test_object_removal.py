@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sys
 import tempfile
 import unittest
@@ -15,6 +16,7 @@ sys.path.insert(0, str(ROOT / "app"))
 from openroto.inference.removal import RemovalEngine, RemovalSettings
 from openroto.inference.removal_backends import backend_status
 from openroto.inference.removal_comp import fusion_removal_comp_text
+from openroto.inference.removal_install import install_removal_backend
 
 
 class ObjectRemovalTests(unittest.TestCase):
@@ -95,6 +97,71 @@ class ObjectRemovalTests(unittest.TestCase):
         status = backend_status("temporal")
         self.assertTrue(status["available"])
         self.assertEqual("Built in", status["status"])
+
+    def test_uninstalled_managed_backends_download_on_first_use(self):
+        self.assertTrue(callable(install_removal_backend))
+        with tempfile.TemporaryDirectory() as temporary:
+            environment = {
+                "LOCALAPPDATA": temporary,
+                "OPENROTO_FGT_ROOT": "",
+                "OPENROTO_FGT_PYTHON": "",
+                "OPENROTO_SVOR_ROOT": "",
+                "OPENROTO_SVOR_PYTHON": "",
+            }
+            with mock.patch.dict(os.environ, environment, clear=False):
+                for backend_id in ("fgt", "svor"):
+                    status = backend_status(backend_id)
+                    self.assertTrue(status["available"])
+                    self.assertFalse(status["installed"])
+                    self.assertTrue(status["managed_installable"])
+                    self.assertEqual("Downloads on first use", status["status"])
+
+    def test_managed_installer_does_not_treat_installable_as_installed(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            environment = {
+                "LOCALAPPDATA": temporary,
+                "OPENROTO_FGT_ROOT": "",
+                "OPENROTO_FGT_PYTHON": "",
+            }
+            first_status = {
+                "display_name": "FGT++",
+                "available": True,
+                "installed": False,
+                "managed_installable": True,
+            }
+            ready_status = {**first_status, "installed": True}
+
+            def fake_source(_backend_id, destination, **_kwargs):
+                Path(destination).mkdir(parents=True, exist_ok=True)
+
+            def fake_python(staging, **_kwargs):
+                python = Path(staging) / "venv" / "Scripts" / "python.exe"
+                python.parent.mkdir(parents=True, exist_ok=True)
+                python.write_bytes(b"")
+                return python
+
+            with (
+                mock.patch.dict(os.environ, environment, clear=False),
+                mock.patch(
+                    "openroto.inference.removal_install.backend_status",
+                    side_effect=[first_status, ready_status],
+                ),
+                mock.patch(
+                    "openroto.inference.removal_install._download_source",
+                    side_effect=fake_source,
+                ) as download_source,
+                mock.patch(
+                    "openroto.inference.removal_install._prepare_python",
+                    side_effect=fake_python,
+                ),
+                mock.patch("openroto.inference.removal_install._install_fgt_dependencies"),
+                mock.patch("openroto.inference.removal_install._install_fgt_weights"),
+            ):
+                result = install_removal_backend("fgt")
+
+            download_source.assert_called_once()
+            self.assertTrue(result.is_dir())
+            self.assertTrue((result / ".openroto-managed.json").is_file())
 
     def test_removal_comp_uses_rgb_sequence_as_media_out(self):
         text = fusion_removal_comp_text(Path(r"C:\OpenRoto\removed_00000000.png"), 12)
