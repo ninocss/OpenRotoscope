@@ -580,8 +580,11 @@ ApplicationWindow {
 
         onOpened: Qt.callLater(function() { compactDrawerFocusScope.forceActiveFocus(Qt.TabFocusReason) })
         onClosed: {
-            if (window.compactMode && compactControlsButton.visible)
-                compactControlsButton.forceActiveFocus(Qt.TabFocusReason)
+            if (window.compactMode && compactControlsButton.visible) {
+                Qt.callLater(function() {
+                    compactControlsButton.forceActiveFocus(Qt.TabFocusReason)
+                })
+            }
         }
 
         contentItem: FocusScope {
