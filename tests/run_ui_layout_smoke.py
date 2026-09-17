@@ -26,6 +26,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--mode", choices=("rotoscope", "remove"), default="rotoscope")
     parser.add_argument("--theme", choices=("system", "light", "dark"), default="system")
     parser.add_argument("--settings", action="store_true")
+    parser.add_argument(
+        "--force-size",
+        action="store_true",
+        help="Temporarily ignore the app minimum size to expose compact-layout clipping.",
+    )
+    parser.add_argument(
+        "--performance",
+        action="store_true",
+        help="Show the performance overlay so its compact centering is captured too.",
+    )
     return parser.parse_args()
 
 
@@ -126,6 +136,15 @@ def run() -> int:
         quick_window = wrapInstance(getCppPointer(window)[0], QQuickWindow)
         window.setProperty("themeMode", ARGS.theme)
         removal_controller.setWorkflowMode(ARGS.mode)
+        if ARGS.performance:
+            model_manager.setPerformanceStatsVisible(True)
+
+        declared_minimum = [int(window.minimumWidth()), int(window.minimumHeight())]
+        if ARGS.force_size:
+            # Test-only override. Production minimums stay untouched; this exposes
+            # whether the layout itself can survive realistic high-DPI work areas.
+            window.setMinimumWidth(0)
+            window.setMinimumHeight(0)
         window.setWidth(ARGS.width)
         window.setHeight(ARGS.height)
         window.show()
@@ -142,8 +161,7 @@ def run() -> int:
             try:
                 actual_width = int(window.width())
                 actual_height = int(window.height())
-                minimum_width = int(window.minimumWidth())
-                minimum_height = int(window.minimumHeight())
+                effective_minimum = [int(window.minimumWidth()), int(window.minimumHeight())]
                 image = quick_window.grabWindow()
                 if image.isNull():
                     raise RuntimeError("QQuickWindow.grabWindow() returned a null image")
@@ -158,19 +176,24 @@ def run() -> int:
                         {
                             "requested": [ARGS.width, ARGS.height],
                             "actual": [actual_width, actual_height],
-                            "minimum": [minimum_width, minimum_height],
+                            "declared_minimum": declared_minimum,
+                            "effective_minimum": effective_minimum,
+                            "forced_size": ARGS.force_size,
                             "scale": ARGS.scale,
                             "expected_pixels": [expected_pixel_width, expected_pixel_height],
                             "image_pixels": [image.width(), image.height()],
                             "mode": ARGS.mode,
                             "theme": ARGS.theme,
                             "settings": ARGS.settings,
+                            "performance": ARGS.performance,
                             "output": str(ARGS.output),
                         },
                         sort_keys=True,
                     )
                 )
-                if actual_width < minimum_width or actual_height < minimum_height:
+                if not ARGS.force_size and (
+                    actual_width < declared_minimum[0] or actual_height < declared_minimum[1]
+                ):
                     raise AssertionError("Window rendered below its declared minimum size")
                 if actual_width != ARGS.width or actual_height != ARGS.height:
                     raise AssertionError(
