@@ -116,6 +116,53 @@ class ObjectRemovalTests(unittest.TestCase):
                     self.assertTrue(status["managed_installable"])
                     self.assertEqual("Downloads on first use", status["status"])
 
+    def test_managed_installer_does_not_treat_installable_as_installed(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            environment = {
+                "LOCALAPPDATA": temporary,
+                "OPENROTO_FGT_ROOT": "",
+                "OPENROTO_FGT_PYTHON": "",
+            }
+            first_status = {
+                "display_name": "FGT++",
+                "available": True,
+                "installed": False,
+                "managed_installable": True,
+            }
+            ready_status = {**first_status, "installed": True}
+
+            def fake_source(_backend_id, destination, **_kwargs):
+                Path(destination).mkdir(parents=True, exist_ok=True)
+
+            def fake_python(staging, **_kwargs):
+                python = Path(staging) / "venv" / "Scripts" / "python.exe"
+                python.parent.mkdir(parents=True, exist_ok=True)
+                python.write_bytes(b"")
+                return python
+
+            with (
+                mock.patch.dict(os.environ, environment, clear=False),
+                mock.patch(
+                    "openroto.inference.removal_install.backend_status",
+                    side_effect=[first_status, ready_status],
+                ),
+                mock.patch(
+                    "openroto.inference.removal_install._download_source",
+                    side_effect=fake_source,
+                ) as download_source,
+                mock.patch(
+                    "openroto.inference.removal_install._prepare_python",
+                    side_effect=fake_python,
+                ),
+                mock.patch("openroto.inference.removal_install._install_fgt_dependencies"),
+                mock.patch("openroto.inference.removal_install._install_fgt_weights"),
+            ):
+                result = install_removal_backend("fgt")
+
+            download_source.assert_called_once()
+            self.assertTrue(result.is_dir())
+            self.assertTrue((result / ".openroto-managed.json").is_file())
+
     def test_removal_comp_uses_rgb_sequence_as_media_out(self):
         text = fusion_removal_comp_text(Path(r"C:\OpenRoto\removed_00000000.png"), 12)
         self.assertIn("OpenRotoRemoval = Loader", text)
