@@ -30,6 +30,13 @@ jobs:
       - name: Run UI smoke test
         shell: pwsh
         run: .\.venv\Scripts\python.exe tests\run_ui_smoke.py
+      - name: Run compact accessibility smoke
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
+          .\.venv\Scripts\python.exe tests\run_ui_accessibility_smoke.py --width 900 --height 480 --mode remove
+          .\.venv\Scripts\python.exe tests\run_ui_accessibility_smoke.py --width 960 --height 500 --mode rotoscope
       - name: Capture DPI and window layouts
         shell: pwsh
         run: |
