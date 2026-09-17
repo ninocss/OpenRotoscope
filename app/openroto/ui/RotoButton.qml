@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Window
 
 Button {
     id: control
@@ -9,10 +10,13 @@ Button {
     property bool dangerStyle: false
     property bool quiet: false
     property string toolTip: ""
+    readonly property bool compactTouchMode: control.Window.window !== null && control.Window.window.width < 1120
 
-    implicitHeight: 36
+    implicitWidth: Math.max(compactTouchMode ? 44 : 0, contentItem.implicitWidth + leftPadding + rightPadding)
+    implicitHeight: compactTouchMode ? 44 : 36
     leftPadding: 12
     rightPadding: 12
+    activeFocusOnTab: enabled && visible
     opacity: enabled ? 1.0 : 0.42
     font.family: theme.fontFamily
     font.pixelSize: 11
@@ -46,9 +50,9 @@ Button {
 
     ToolTip {
         id: tip
-        visible: control.hovered && control.toolTip.length > 0
+        visible: (control.hovered || control.visualFocus) && control.toolTip.length > 0
         text: control.toolTip
-        delay: 420
+        delay: control.visualFocus ? 0 : 420
         timeout: 5000
         y: control.height + 6
         x: Math.round((control.width - implicitWidth) / 2)
