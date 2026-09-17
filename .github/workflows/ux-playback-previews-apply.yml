@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - ux-playback-previews
+  pull_request:
+    branches:
+      - app-redesign
 
 permissions:
   contents: write
