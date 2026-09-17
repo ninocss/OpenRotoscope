@@ -29,12 +29,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--force-size",
         action="store_true",
-        help="Temporarily ignore the app minimum size to expose compact-layout clipping.",
+        help="Temporarily ignore the app minimum size for unsupported-size probes.",
     )
     parser.add_argument(
         "--performance",
         action="store_true",
         help="Show the performance overlay so its compact centering is captured too.",
+    )
+    parser.add_argument(
+        "--drawer",
+        action="store_true",
+        help="Open the compact controls drawer before capturing the window.",
     )
     return parser.parse_args()
 
@@ -141,13 +146,23 @@ def run() -> int:
 
         declared_minimum = [int(window.minimumWidth()), int(window.minimumHeight())]
         if ARGS.force_size:
-            # Test-only override. Production minimums stay untouched; this exposes
-            # whether the layout itself can survive realistic high-DPI work areas.
             window.setMinimumWidth(0)
             window.setMinimumHeight(0)
         window.setWidth(ARGS.width)
         window.setHeight(ARGS.height)
         window.show()
+
+        compact_mode = bool(window.property("compactMode"))
+        if ARGS.width < 1120 and not compact_mode:
+            raise AssertionError("Compact mode did not activate below 1120 logical pixels")
+        if ARGS.width >= 1120 and compact_mode:
+            raise AssertionError("Compact mode stayed active at or above 1120 logical pixels")
+
+        if ARGS.drawer:
+            if not compact_mode:
+                raise AssertionError("Drawer capture requested outside compact mode")
+            if not QMetaObject.invokeMethod(window, "openCompactControls"):
+                raise RuntimeError("Could not open compact controls drawer")
         if ARGS.settings:
             signal = getattr(window, "settingsRequested", None)
             if signal is not None and hasattr(signal, "emit"):
@@ -179,6 +194,8 @@ def run() -> int:
                             "declared_minimum": declared_minimum,
                             "effective_minimum": effective_minimum,
                             "forced_size": ARGS.force_size,
+                            "compact_mode": compact_mode,
+                            "drawer": ARGS.drawer,
                             "scale": ARGS.scale,
                             "expected_pixels": [expected_pixel_width, expected_pixel_height],
                             "image_pixels": [image.width(), image.height()],
@@ -209,7 +226,7 @@ def run() -> int:
             finally:
                 app.quit()
 
-        QTimer.singleShot(450, capture)
+        QTimer.singleShot(500, capture)
         exit_code = app.exec()
         removal_controller.close()
         model_manager.close()
