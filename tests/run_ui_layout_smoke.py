@@ -50,7 +50,7 @@ os.environ["QT_SCALE_FACTOR"] = str(ARGS.scale)
 os.environ.setdefault("QT_QUICK_CONTROLS_STYLE", "Basic")
 
 from PIL import Image
-from PySide6.QtCore import QMetaObject, QTimer, QUrl
+from PySide6.QtCore import QMetaObject, QSettings, QTimer, QUrl
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuick import QQuickWindow
 from PySide6.QtWidgets import QApplication
@@ -112,6 +112,10 @@ def build_manifest(root: Path, port: int) -> SessionManifest:
 def run() -> int:
     app = QApplication(["openroto-layout-smoke"])
     app.setApplicationName("OpenRoto Layout Smoke")
+
+    # Keep screenshot cases deterministic. ModelManager and QML persist UI
+    # preferences under this application scope in normal use.
+    QSettings("OpenRoto", "OpenRoto").clear()
 
     with tempfile.TemporaryDirectory() as directory:
         root = Path(directory)
