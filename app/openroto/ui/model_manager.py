@@ -7,19 +7,25 @@ from PySide6.QtCore import Property, QObject, QSettings, Signal, Slot
 from openroto.core.models import ModelPreset
 from openroto.inference.catalog import MODEL_CATALOG
 from openroto.inference.model_cache import download_model, model_home, model_is_installed, remove_model
-from openroto.inference.removal_backends import backend_status
+from openroto.inference.removal_backends import (
+    backend_status,
+    install_backend,
+    remove_backend,
+)
 
 
 class ModelManager(QObject):
     changed = Signal()
     busyChanged = Signal()
     operationFinished = Signal(str, str, str)
+    backendOperationFinished = Signal(str, str, str)
 
     def __init__(self, controller: QObject) -> None:
         super().__init__(controller)
         self._controller = controller
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="OpenRotoModels")
         self._busy_preset: ModelPreset | None = None
+        self._busy_backend: str | None = None
         self._busy_action = ""
         self._last_error = ""
         self._settings = QSettings("OpenRoto", "OpenRoto")
@@ -36,6 +42,7 @@ class ModelManager(QObject):
         if hasattr(controller, "changed"):
             controller.changed.connect(self.changed.emit)
         self.operationFinished.connect(self._finish_operation)
+        self.backendOperationFinished.connect(self._finish_backend_operation)
 
     @Property("QVariantList", notify=changed)
     def models(self) -> list[dict[str, object]]:
@@ -69,11 +76,19 @@ class ModelManager(QObject):
 
     @Property("QVariantList", notify=changed)
     def removalBackends(self) -> list[dict[str, object]]:
-        return [backend_status(value) for value in ("temporal", "fgt", "svor")]
+        rows: list[dict[str, object]] = []
+        for value in ("temporal", "fgt", "svor"):
+            row = backend_status(value)
+            is_busy = self._busy_backend == value
+            row["busy"] = is_busy
+            if is_busy:
+                row["status"] = "Installing…" if self._busy_action == "install" else "Removing…"
+            rows.append(row)
+        return rows
 
     @Property(bool, notify=busyChanged)
     def busy(self) -> bool:
-        return self._busy_preset is not None
+        return self._busy_preset is not None or self._busy_backend is not None
 
     @Property(bool, notify=changed)
     def performanceStatsVisible(self) -> bool:
@@ -106,11 +121,19 @@ class ModelManager(QObject):
 
     @Slot(str)
     def downloadModel(self, value: str) -> None:
-        self._start(value, "download")
+        self._start_model(value, "download")
 
     @Slot(str)
     def removeModel(self, value: str) -> None:
-        self._start(value, "remove")
+        self._start_model(value, "remove")
+
+    @Slot(str)
+    def installRemovalBackend(self, value: str) -> None:
+        self._start_backend(value, "install")
+
+    @Slot(str)
+    def removeRemovalBackend(self, value: str) -> None:
+        self._start_backend(value, "remove")
 
     @Slot()
     def refresh(self) -> None:
@@ -125,7 +148,7 @@ class ModelManager(QObject):
     def close(self) -> None:
         self._executor.shutdown(wait=False, cancel_futures=True)
 
-    def _start(self, value: str, action: str) -> None:
+    def _start_model(self, value: str, action: str) -> None:
         if self.busy or bool(getattr(self._controller, "busy", False)):
             return
         try:
@@ -157,9 +180,53 @@ class ModelManager(QObject):
 
         future.add_done_callback(completed)
 
+    def _start_backend(self, value: str, action: str) -> None:
+        if self.busy or bool(getattr(self._controller, "busy", False)):
+            return
+        if value not in {"fgt", "svor"}:
+            return
+        status = backend_status(value)
+        if not bool(status.get("can_manage", False)):
+            self._last_error = (
+                f"{status['display_name']} is configured through environment variables and cannot be managed by OpenRoto."
+            )
+            self.changed.emit()
+            return
+        self._busy_backend = value
+        self._busy_action = action
+        self._last_error = ""
+        self.busyChanged.emit()
+        self.changed.emit()
+
+        def operation() -> None:
+            if action == "install":
+                install_backend(value)
+            else:
+                remove_backend(value)
+
+        future = self._executor.submit(operation)
+
+        def completed(task) -> None:
+            error = ""
+            try:
+                task.result()
+            except Exception as exception:
+                error = str(exception)
+            self.backendOperationFinished.emit(value, action, error)
+
+        future.add_done_callback(completed)
+
     @Slot(str, str, str)
     def _finish_operation(self, preset_value: str, action: str, error: str) -> None:
         self._busy_preset = None
+        self._busy_action = ""
+        self._last_error = error
+        self.busyChanged.emit()
+        self.changed.emit()
+
+    @Slot(str, str, str)
+    def _finish_backend_operation(self, backend_id: str, action: str, error: str) -> None:
+        self._busy_backend = None
         self._busy_action = ""
         self._last_error = error
         self.busyChanged.emit()
