@@ -9,6 +9,7 @@ from unittest.mock import patch
 from openroto.core.models import ModelPreset
 from openroto.inference.catalog import MODEL_CATALOG
 from openroto.inference.model_cache import (
+    download_model,
     hub_cache_root,
     model_home,
     model_is_installed,
@@ -37,6 +38,26 @@ class ModelCacheTests(unittest.TestCase):
                 snapshot.mkdir(parents=True)
                 self.assertFalse(model_is_installed(spec))
                 (snapshot / "config.json").write_text("{}", encoding="utf-8")
+                self.assertTrue(model_is_installed(spec))
+
+    def test_download_model_uses_the_same_cache_that_status_checks(self):
+        spec = MODEL_CATALOG[ModelPreset.FAST]
+        with tempfile.TemporaryDirectory() as directory:
+            with patch.dict(
+                os.environ,
+                {"HF_HOME": directory, "HF_HUB_CACHE": str(Path(directory) / "hub")},
+                clear=False,
+            ):
+                def fake_snapshot_download(*, repo_id: str, cache_dir: str) -> str:
+                    self.assertEqual(spec.repository, repo_id)
+                    self.assertEqual(hub_cache_root(), Path(cache_dir))
+                    snapshot = repository_cache_dir(repo_id) / "snapshots" / "downloaded"
+                    snapshot.mkdir(parents=True)
+                    (snapshot / "model.pt").write_bytes(b"weights")
+                    return str(snapshot)
+
+                with patch("huggingface_hub.snapshot_download", fake_snapshot_download):
+                    download_model(spec)
                 self.assertTrue(model_is_installed(spec))
 
     def test_remove_model_only_removes_the_requested_repository(self):
